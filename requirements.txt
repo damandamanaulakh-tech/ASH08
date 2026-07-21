@@ -1,0 +1,6 @@
+# ASH08 — minimal runtime
+# Core modules are pure Python stdlib.
+# Optional later:
+# pymongo>=4.6
+# uvicorn>=0.27
+# fastapi>=0.110

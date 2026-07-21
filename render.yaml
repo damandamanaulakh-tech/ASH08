@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: ash08-desk
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m http.server $PORT --directory desk
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.0"
