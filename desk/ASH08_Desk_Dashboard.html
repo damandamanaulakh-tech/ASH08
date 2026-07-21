@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>ASH08 Desk</title>
+<style>
+body{margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;background:#0b1220;color:#e8eefc}
+.top{padding:16px 20px;border-bottom:1px solid #27334d;background:#0e1627}
+h1{margin:0;font-size:20px}.sub{color:#93a0bb;font-size:12px;margin-top:4px}
+.wrap{padding:20px;max-width:960px;margin:0 auto}
+.card{background:#121a2b;border:1px solid #27334d;border-radius:12px;padding:16px;margin-bottom:14px}
+.badge{display:inline-block;padding:4px 10px;border-radius:999px;background:#172554;color:#dbeafe;font-size:11px;margin-right:6px}
+.ok{background:#052e16;color:#86efac}
+a{color:#93c5fd}
+code{background:#182338;padding:2px 6px;border-radius:4px}
+</style>
+</head>
+<body>
+<div class="top">
+  <h1>ASH08 Desk</h1>
+  <div class="sub">Own repo · Own Render · Not AshStocks · Paper only</div>
+</div>
+<div class="wrap">
+  <div class="card">
+    <span class="badge">ASH08</span>
+    <span class="badge ok">Separate product</span>
+    <span class="badge ok">L0–L4 locked</span>
+    <p style="margin-top:14px;line-height:1.5;color:#93a0bb">
+      Full interactive dashboard (Scanner / Piano / Ticket / Governor) is in local artifacts as
+      <code>ASH08_Desk_Dashboard.html</code>. This page confirms the <strong>ash08-desk</strong> service is up.
+    </p>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">Modules</h3>
+    <ul style="color:#93a0bb;line-height:1.7">
+      <li><code>ash08/universe.py</code> — weekly Core 150–250</li>
+      <li><code>ash08/scanner.py</code> — SELECT / WATCH / REJECT</li>
+      <li><code>ash08/paper_engine.py</code> — paper ticket + exits</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">Local demo</h3>
+    <pre style="background:#0b1220;padding:12px;border-radius:8px;overflow:auto;font-size:12px">python ash08/universe.py --demo
+python ash08/scanner.py --demo
+python ash08/paper_engine.py --demo</pre>
+  </div>
+</div>
+</body>
+</html>
