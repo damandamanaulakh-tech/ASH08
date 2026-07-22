@@ -181,32 +181,66 @@ class Handler(BaseHTTPRequestHandler):
             quotes, quote_error = {}, None
             if "fetch_quotes" in MODS:
                 try:
-                    quotes = MODS["fetch_quotes"](keys[:200])
+                    quotes = MODS["fetch_quotes"](keys[:100])
                 except Exception as e:
                     quote_error = str(e)
                     LOG.warning("quotes: %s", e)
+
             Metrics = MODS["Metrics"]
             metrics = []
-            for s in symbols[:200]:
+            provisional = (not quotes) or bool(quote_error)
+            for i, s in enumerate(symbols[:200]):
                 meta = rows_meta.get(s) or {}
                 key = meta.get("instrument_key") or f"NSE_EQ|{s}"
                 q = quotes.get(key) or quotes.get(s) or {}
                 last = None
                 if isinstance(q, dict):
                     last = q.get("last_price") or (q.get("ohlc") or {}).get("close")
-                metrics.append(Metrics(
-                    symbol=s,
-                    adv20=300_000 if last is not None else None,
-                    turnover_cr_5d=10.0 if last is not None else None,
-                    stale_days=0 if last is not None else 99,
-                    mom_6m=0.05 if last is not None else -0.01,
-                    quality_score=70.0 if last is not None else 40.0,
-                    ltp=float(last) if last is not None else None,
-                ))
+
+                if last is not None:
+                    metrics.append(Metrics(
+                        symbol=s,
+                        adv20=300_000,
+                        turnover_cr_5d=10.0,
+                        stale_days=0,
+                        mom_6m=0.08,
+                        quality_score=72.0,
+                        ltp=float(last),
+                    ))
+                elif provisional:
+                    # Quotes blocked from Render IP — provisional so names still appear on desk
+                    # Score steps down so list is ranked but most land in WATCH band
+                    qscore = 68.0 - (i % 20) * 0.3
+                    metrics.append(Metrics(
+                        symbol=s,
+                        adv20=250_000,
+                        turnover_cr_5d=6.0,
+                        stale_days=1,
+                        mom_6m=0.06,
+                        quality_score=qscore,
+                        ltp=None,
+                    ))
+                else:
+                    metrics.append(Metrics(
+                        symbol=s,
+                        adv20=None,
+                        turnover_cr_5d=None,
+                        stale_days=99,
+                        mom_6m=-0.01,
+                        quality_score=40.0,
+                        ltp=None,
+                    ))
+
             snap = MODS["run_scan"](metrics, universe_bucket="core")
+            # Tag provisional reasons
+            if provisional:
+                for r in snap.rows:
+                    if isinstance(r, dict):
+                        r["reason"] = (r.get("reason") or "") + " | provisional (no live quote from Render)"
             store.save_scan(snap.to_dict())
             return self.json(200, {
                 "ok": True,
+                "mode": "provisional" if provisional else "live_quotes",
                 "quote_error": quote_error,
                 "scanned": len(metrics),
                 "select": snap.select_count,
