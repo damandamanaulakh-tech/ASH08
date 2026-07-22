@@ -1,4 +1,4 @@
-"""ASH08 Supabase store — REST via stdlib. Falls back to local JSON."""
+"""ASH08 store — local JSON always; Supabase best-effort (no hard fail on 403)."""
 from __future__ import annotations
 
 import json
@@ -29,10 +29,7 @@ class SupabaseStore:
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.enabled = bool(self.url and self.key)
-        if self.enabled:
-            LOG.info("Supabase store enabled")
-        else:
-            LOG.warning("Supabase env missing — local JSON only")
+        self.last_error: Optional[str] = None
 
     def _headers(self):
         return {
@@ -48,16 +45,26 @@ class SupabaseStore:
         url = f"{self.url}/rest/v1/{path}"
         if query:
             url = f"{url}?{query}"
-        data = None if body is None else json.dumps(body).encode("utf-8")
+        data = None if body is None else json.dumps(body, default=str).encode("utf-8")
         req = urllib.request.Request(url, data=data, headers=self._headers(), method=method)
         try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            with urllib.request.urlopen(req, timeout=45) as resp:
                 raw = resp.read().decode("utf-8")
                 return json.loads(raw) if raw else None
         except urllib.error.HTTPError as e:
             err = e.read().decode("utf-8", errors="replace")
-            LOG.error("Supabase HTTP %s %s: %s", e.code, path, err[:500])
+            self.last_error = f"HTTP {e.code}: {err[:300]}"
+            LOG.error("Supabase %s %s: %s", e.code, path, err[:300])
             raise
+
+    def _write_json(self, name: str, obj: dict) -> None:
+        (self.data_dir / name).write_text(json.dumps(obj, indent=2, default=str), encoding="utf-8")
+
+    def _read_json(self, name: str) -> Optional[dict]:
+        p = self.data_dir / name
+        if not p.exists():
+            return None
+        return json.loads(p.read_text(encoding="utf-8"))
 
     def save_universe(self, bucket, payload):
         row = {
@@ -69,9 +76,12 @@ class SupabaseStore:
             "rows": payload.get("rows") or [],
             "notes": payload.get("notes") or [],
         }
-        (self.data_dir / f"universe_{bucket}.json").write_text(json.dumps(row, indent=2))
+        self._write_json(f"universe_{bucket}.json", row)
         if self.enabled:
-            self._request("POST", "universe_snapshots", row)
+            try:
+                self._request("POST", "universe_snapshots", row)
+            except Exception as e:
+                LOG.warning("save_universe supabase skipped: %s", e)
 
     def load_universe(self, bucket):
         if self.enabled:
@@ -83,11 +93,8 @@ class SupabaseStore:
                 if data:
                     return data[0]
             except Exception as e:
-                LOG.warning("load_universe: %s", e)
-        path = self.data_dir / f"universe_{bucket}.json"
-        if path.exists():
-            return json.loads(path.read_text())
-        return None
+                LOG.warning("load_universe supabase: %s", e)
+        return self._read_json(f"universe_{bucket}.json")
 
     def save_scan(self, payload):
         row = {
@@ -98,9 +105,12 @@ class SupabaseStore:
             "reject_count": int(payload.get("reject_count") or payload.get("reject") or 0),
             "rows": payload.get("rows") or [],
         }
-        (self.data_dir / "scan_latest.json").write_text(json.dumps(row, indent=2))
+        self._write_json("scan_latest.json", row)
         if self.enabled:
-            self._request("POST", "scan_results", row)
+            try:
+                self._request("POST", "scan_results", row)
+            except Exception as e:
+                LOG.warning("save_scan supabase skipped: %s", e)
 
     def load_scan(self):
         if self.enabled:
@@ -109,79 +119,36 @@ class SupabaseStore:
                 if data:
                     return data[0]
             except Exception as e:
-                LOG.warning("load_scan: %s", e)
-        path = self.data_dir / "scan_latest.json"
-        if path.exists():
-            return json.loads(path.read_text())
-        return None
+                LOG.warning("load_scan supabase: %s", e)
+        return self._read_json("scan_latest.json")
 
     def save_paper_state(self, state):
-        (self.data_dir / "paper_state.json").write_text(json.dumps(state, indent=2))
+        self._write_json("paper_state.json", state)
         if not self.enabled:
             return
-        gov = state.get("governor") or {}
+        # best-effort only
         try:
-            self._request(
-                "POST", "governor_state",
-                {
+            gov = state.get("governor") or {}
+            try:
+                self._request("POST", "governor_state", {
                     "id": 1,
                     "level": gov.get("level"),
                     "exposure_pct": gov.get("exposure_pct"),
                     "rationale": gov.get("rationale"),
                     "updated_at": _utc_now_iso(),
-                },
-            )
-        except Exception:
-            try:
-                self._request(
-                    "PATCH", "governor_state",
-                    {
+                })
+            except Exception:
+                try:
+                    self._request("PATCH", "governor_state", {
                         "level": gov.get("level"),
                         "exposure_pct": gov.get("exposure_pct"),
                         "rationale": gov.get("rationale"),
                         "updated_at": _utc_now_iso(),
-                    },
-                    query="id=eq.1",
-                )
-            except Exception as e:
-                LOG.warning("governor_state: %s", e)
-        for o in state.get("orders") or []:
-            try:
-                self._request("POST", "paper_orders", {
-                    "order_id": o.get("order_id"),
-                    "symbol": o.get("symbol"),
-                    "side": o.get("side"),
-                    "order_type": o.get("order_type"),
-                    "qty": o.get("qty"),
-                    "sized_qty": o.get("sized_qty"),
-                    "fill_price": o.get("fill_price"),
-                    "stop": o.get("stop"),
-                    "target": o.get("target"),
-                    "status": o.get("status"),
-                    "governor": o.get("governor") or gov,
-                    "created_at": o.get("created_at") or _utc_now_iso(),
-                })
-            except Exception:
-                pass
-        for p in state.get("positions") or []:
-            try:
-                self._request("POST", "paper_positions", {
-                    "position_id": p.get("position_id"),
-                    "symbol": p.get("symbol"),
-                    "qty": p.get("qty"),
-                    "side": p.get("side"),
-                    "entry": p.get("entry"),
-                    "stop": p.get("stop"),
-                    "target": p.get("target"),
-                    "status": p.get("status"),
-                    "ltp": p.get("ltp"),
-                    "exit_price": p.get("exit_price"),
-                    "exit_reason": p.get("exit_reason"),
-                    "opened_at": p.get("opened_at"),
-                    "closed_at": p.get("closed_at"),
-                })
-            except Exception:
-                pass
+                    }, query="id=eq.1")
+                except Exception:
+                    pass
+        except Exception as e:
+            LOG.warning("save_paper supabase skipped: %s", e)
 
     def health(self):
         out = {
@@ -192,14 +159,20 @@ class SupabaseStore:
             "database_url_set": bool(os.environ.get("DATABASE_URL")),
             "upstox_token_set": bool(os.environ.get("UPSTOX_ACCESS_TOKEN")),
             "upstox_key_set": bool(os.environ.get("UPSTOX_API_KEY")),
+            "local_data_dir": str(self.data_dir),
+            "local_core_exists": (self.data_dir / "universe_core.json").exists(),
+            "local_scan_exists": (self.data_dir / "scan_latest.json").exists(),
         }
         if self.enabled:
             try:
                 self._request("GET", "governor_state", query="select=id&limit=1")
                 out["supabase_reachable"] = True
+                out["supabase_error"] = None
             except Exception as e:
                 out["supabase_reachable"] = False
                 out["supabase_error"] = str(e)[:200]
+                if self.last_error:
+                    out["supabase_error"] = self.last_error[:200]
         else:
             out["supabase_reachable"] = False
         return out
