@@ -1,7 +1,5 @@
 """
 ASH08 API — Render Start Command MUST be: python api.py
-
-Fixes: previous handler fell through to static 404 for /api/*.
 """
 from __future__ import annotations
 
@@ -65,12 +63,17 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         LOG.info("%s - %s", self.address_string(), fmt % args)
 
+    def do_HEAD(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def do_GET(self):
         parsed = urlparse(self.path)
         path = unquote(parsed.path or "/")
         if not path.startswith("/"):
             path = "/" + path
-        # strip trailing slash except root
         if len(path) > 1 and path.endswith("/"):
             path = path[:-1]
 
@@ -89,7 +92,6 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/scan/run":
             return self.api_scan_run()
 
-        # static desk files
         return self.serve_static(path)
 
     def api_health(self):
@@ -224,14 +226,12 @@ class Handler(BaseHTTPRequestHandler):
             rel = "index.html"
         else:
             rel = path.lstrip("/")
-        # only allow desk/
         candidate = (DESK / rel).resolve()
         try:
             candidate.relative_to(DESK.resolve())
         except ValueError:
             return self.json(403, {"ok": False, "error": "forbidden"})
         if not candidate.is_file():
-            # try under desk anyway for dashboard name
             alt = DESK / Path(rel).name
             if alt.is_file():
                 candidate = alt
