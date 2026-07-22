@@ -1,14 +1,19 @@
-"""ASH08 API — must be the Render Start Command: python api.py"""
+"""
+ASH08 API — Render Start Command MUST be: python api.py
+
+Fixes: previous handler fell through to static 404 for /api/*.
+"""
 from __future__ import annotations
 
 import json
 import logging
+import mimetypes
 import os
 import sys
 import traceback
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
@@ -16,118 +21,120 @@ if str(ROOT) not in sys.path:
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 LOG = logging.getLogger("ash08.api")
+
 DESK = ROOT / "desk"
 PORT = int(os.environ.get("PORT", "10000"))
 
 
-def _safe_import():
-    mods = {}
+def load_mods():
+    m = {}
     try:
         from ash08.supabase_store import SupabaseStore
-        mods["SupabaseStore"] = SupabaseStore
+        m["store"] = SupabaseStore
     except Exception as e:
-        LOG.error("import SupabaseStore: %s", e)
+        LOG.error("store: %s", e)
     try:
-        from ash08.upstox_client import (
-            fetch_nse_equity_instruments,
-            fetch_quotes,
-            user_profile,
-        )
-        mods["fetch_nse"] = fetch_nse_equity_instruments
-        mods["fetch_quotes"] = fetch_quotes
-        mods["user_profile"] = user_profile
+        from ash08.upstox_client import fetch_nse_equity_instruments, fetch_quotes, user_profile
+        m["fetch_nse"] = fetch_nse_equity_instruments
+        m["fetch_quotes"] = fetch_quotes
+        m["profile"] = user_profile
     except Exception as e:
-        LOG.error("import upstox_client: %s", e)
+        LOG.error("upstox: %s", e)
     try:
         from ash08.universe import InstrumentRow, UniverseManager
-        mods["InstrumentRow"] = InstrumentRow
-        mods["UniverseManager"] = UniverseManager
+        m["Row"] = InstrumentRow
+        m["Uni"] = UniverseManager
     except Exception as e:
-        LOG.error("import universe: %s", e)
+        LOG.error("universe: %s", e)
     try:
         from ash08.scanner import StockMetrics, run_scan
-        mods["StockMetrics"] = StockMetrics
-        mods["run_scan"] = run_scan
+        m["Metrics"] = StockMetrics
+        m["run_scan"] = run_scan
     except Exception as e:
-        LOG.error("import scanner: %s", e)
-    return mods
+        LOG.error("scanner: %s", e)
+    return m
 
 
-MODS = _safe_import()
+MODS = load_mods()
+LOG.info("modules loaded: %s", sorted(MODS.keys()))
 
 
-class Handler(SimpleHTTPRequestHandler):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, directory=str(DESK if DESK.exists() else ROOT), **kwargs)
+class Handler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
 
     def log_message(self, fmt, *args):
         LOG.info("%s - %s", self.address_string(), fmt % args)
 
     def do_GET(self):
-        path = urlparse(self.path).path
-        # normalize
-        if path.endswith("/") and path != "/":
-            path = path.rstrip("/")
-        if path == "/api/health":
-            return self._health()
-        if path == "/api/upstox/profile":
-            return self._profile()
-        if path == "/api/universe/refresh":
-            return self._universe_refresh()
-        if path == "/api/universe/core":
-            return self._universe_core()
-        if path == "/api/scan/latest":
-            return self._scan_latest()
-        if path == "/api/scan/run":
-            return self._scan_run()
-        if path in ("/", ""):
-            self.path = "/index.html"
-        return SimpleHTTPRequestHandler.do_GET(self)
+        parsed = urlparse(self.path)
+        path = unquote(parsed.path or "/")
+        if not path.startswith("/"):
+            path = "/" + path
+        # strip trailing slash except root
+        if len(path) > 1 and path.endswith("/"):
+            path = path[:-1]
 
-    def _health(self):
-        store_info = {"supabase_configured": False}
-        if "SupabaseStore" in MODS:
+        LOG.info("GET %s", path)
+
+        if path == "/api/health":
+            return self.api_health()
+        if path == "/api/upstox/profile":
+            return self.api_profile()
+        if path == "/api/universe/refresh":
+            return self.api_universe_refresh()
+        if path == "/api/universe/core":
+            return self.api_universe_core()
+        if path == "/api/scan/latest":
+            return self.api_scan_latest()
+        if path == "/api/scan/run":
+            return self.api_scan_run()
+
+        # static desk files
+        return self.serve_static(path)
+
+    def api_health(self):
+        store_info = {}
+        if "store" in MODS:
             try:
-                store_info = MODS["SupabaseStore"]().health()
+                store_info = MODS["store"]().health()
             except Exception as e:
                 store_info = {"error": str(e)}
-        return self._json(200, {
+        self.json(200, {
             "ok": True,
             "service": "ash08-desk",
-            "api": "python api.py",
-            "modules_loaded": sorted(MODS.keys()),
+            "handler": "BaseHTTPRequestHandler",
+            "modules": sorted(MODS.keys()),
             "upstox_token_set": bool(os.environ.get("UPSTOX_ACCESS_TOKEN")),
             "supabase_url_set": bool(os.environ.get("SUPABASE_URL")),
             "store": store_info,
         })
 
-    def _profile(self):
-        if "user_profile" not in MODS:
-            return self._json(500, {"ok": False, "error": "upstox_client not loaded"})
+    def api_profile(self):
+        if "profile" not in MODS:
+            return self.json(500, {"ok": False, "error": "upstox module missing"})
         try:
-            return self._json(200, {"ok": True, "profile": MODS["user_profile"]()})
+            return self.json(200, {"ok": True, "profile": MODS["profile"]()})
         except Exception as e:
-            return self._json(401, {"ok": False, "error": str(e)})
+            return self.json(401, {"ok": False, "error": str(e)})
 
-    def _universe_core(self):
-        if "SupabaseStore" not in MODS:
-            return self._json(500, {"ok": False, "error": "store not loaded"})
-        data = MODS["SupabaseStore"]().load_universe("core")
-        return self._json(200, data or {"count": 0, "symbols": []})
+    def api_universe_core(self):
+        if "store" not in MODS:
+            return self.json(500, {"ok": False, "error": "store missing"})
+        data = MODS["store"]().load_universe("core")
+        return self.json(200, data or {"count": 0, "symbols": []})
 
-    def _scan_latest(self):
-        if "SupabaseStore" not in MODS:
-            return self._json(500, {"ok": False, "error": "store not loaded"})
-        return self._json(200, MODS["SupabaseStore"]().load_scan() or {"rows": []})
+    def api_scan_latest(self):
+        if "store" not in MODS:
+            return self.json(500, {"ok": False, "error": "store missing"})
+        return self.json(200, MODS["store"]().load_scan() or {"rows": []})
 
-    def _universe_refresh(self):
-        need = ["fetch_nse", "InstrumentRow", "UniverseManager", "SupabaseStore"]
-        missing = [k for k in need if k not in MODS]
-        if missing:
-            return self._json(500, {"ok": False, "error": "missing modules", "missing": missing})
+    def api_universe_refresh(self):
+        for k in ("fetch_nse", "Row", "Uni", "store"):
+            if k not in MODS:
+                return self.json(500, {"ok": False, "error": f"missing {k}", "modules": sorted(MODS.keys())})
         try:
             instruments = MODS["fetch_nse"]()
-            Row = MODS["InstrumentRow"]
+            Row = MODS["Row"]
             rows = [
                 Row(
                     symbol=r["symbol"],
@@ -139,34 +146,33 @@ class Handler(SimpleHTTPRequestHandler):
                 )
                 for r in instruments
             ]
-            mgr = MODS["UniverseManager"](data_dir="ash08_data")
+            mgr = MODS["Uni"](data_dir="ash08_data")
             result = mgr.rebuild_from_rows(rows)
-            store = MODS["SupabaseStore"]()
+            store = MODS["store"]()
             store.save_universe("core", result["core"].to_dict())
             store.save_universe("discovery", result["discovery"].to_dict())
-            return self._json(200, {
+            return self.json(200, {
                 "ok": True,
                 "source": "upstox_nse_instruments",
                 "instruments_loaded": len(rows),
                 "core_count": result["core"].count,
                 "discovery_count": result["discovery"].count,
-                "core_sample": result["core"].symbols[:15],
+                "core_sample": result["core"].symbols[:20],
                 "supabase": store.health(),
             })
         except Exception as e:
             LOG.exception("universe refresh")
-            return self._json(500, {"ok": False, "error": str(e), "trace": traceback.format_exc()[-800:]})
+            return self.json(500, {"ok": False, "error": str(e), "trace": traceback.format_exc()[-1000:]})
 
-    def _scan_run(self):
-        need = ["SupabaseStore", "StockMetrics", "run_scan"]
-        missing = [k for k in need if k not in MODS]
-        if missing:
-            return self._json(500, {"ok": False, "error": "missing modules", "missing": missing})
+    def api_scan_run(self):
+        for k in ("store", "Metrics", "run_scan"):
+            if k not in MODS:
+                return self.json(500, {"ok": False, "error": f"missing {k}", "modules": sorted(MODS.keys())})
         try:
-            store = MODS["SupabaseStore"]()
+            store = MODS["store"]()
             core = store.load_universe("core")
             if not core or not core.get("symbols"):
-                return self._json(400, {"ok": False, "error": "Core empty — open /api/universe/refresh first"})
+                return self.json(400, {"ok": False, "error": "Core empty. Open /api/universe/refresh first."})
             symbols = core["symbols"]
             rows_meta = {r.get("symbol"): r for r in (core.get("rows") or []) if r.get("symbol")}
             keys = [(rows_meta.get(s) or {}).get("instrument_key") or f"NSE_EQ|{s}" for s in symbols]
@@ -176,8 +182,9 @@ class Handler(SimpleHTTPRequestHandler):
                     quotes = MODS["fetch_quotes"](keys[:200])
                 except Exception as e:
                     quote_error = str(e)
+                    LOG.warning("quotes: %s", e)
+            Metrics = MODS["Metrics"]
             metrics = []
-            SM = MODS["StockMetrics"]
             for s in symbols[:200]:
                 meta = rows_meta.get(s) or {}
                 key = meta.get("instrument_key") or f"NSE_EQ|{s}"
@@ -185,7 +192,7 @@ class Handler(SimpleHTTPRequestHandler):
                 last = None
                 if isinstance(q, dict):
                     last = q.get("last_price") or (q.get("ohlc") or {}).get("close")
-                metrics.append(SM(
+                metrics.append(Metrics(
                     symbol=s,
                     adv20=300_000 if last is not None else None,
                     turnover_cr_5d=10.0 if last is not None else None,
@@ -196,7 +203,7 @@ class Handler(SimpleHTTPRequestHandler):
                 ))
             snap = MODS["run_scan"](metrics, universe_bucket="core")
             store.save_scan(snap.to_dict())
-            return self._json(200, {
+            return self.json(200, {
                 "ok": True,
                 "quote_error": quote_error,
                 "scanned": len(metrics),
@@ -205,28 +212,57 @@ class Handler(SimpleHTTPRequestHandler):
                 "reject": snap.reject_count,
                 "top": [
                     {"symbol": r["symbol"], "decision": r["decision"], "score": r["score"], "ltp": r.get("ltp")}
-                    for r in snap.rows[:20]
+                    for r in snap.rows[:25]
                 ],
             })
         except Exception as e:
             LOG.exception("scan")
-            return self._json(500, {"ok": False, "error": str(e), "trace": traceback.format_exc()[-800:]})
+            return self.json(500, {"ok": False, "error": str(e), "trace": traceback.format_exc()[-1000:]})
 
-    def _json(self, code, obj):
+    def serve_static(self, path: str):
+        if path in ("/", ""):
+            rel = "index.html"
+        else:
+            rel = path.lstrip("/")
+        # only allow desk/
+        candidate = (DESK / rel).resolve()
+        try:
+            candidate.relative_to(DESK.resolve())
+        except ValueError:
+            return self.json(403, {"ok": False, "error": "forbidden"})
+        if not candidate.is_file():
+            # try under desk anyway for dashboard name
+            alt = DESK / Path(rel).name
+            if alt.is_file():
+                candidate = alt
+            else:
+                self.send_error(404, "File not found")
+                return
+        ctype = mimetypes.guess_type(str(candidate))[0] or "application/octet-stream"
+        data = candidate.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+        self.wfile.write(data)
+
+    def json(self, code: int, obj):
         raw = json.dumps(obj, default=str).encode("utf-8")
         self.send_response(code)
-        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(raw)))
         self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(raw)
 
 
 def main():
     DESK.mkdir(parents=True, exist_ok=True)
-    LOG.info("ASH08 api starting on 0.0.0.0:%s modules=%s", PORT, sorted(MODS.keys()))
-    server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
-    server.serve_forever()
+    LOG.info("ASH08 listening 0.0.0.0:%s desk=%s", PORT, DESK)
+    httpd = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
+    httpd.serve_forever()
 
 
 if __name__ == "__main__":
