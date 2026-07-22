@@ -1,6 +1,9 @@
-"""ASH08 Scanner — Phase 3. Own repo ASH08 (not AshStocks)."""
+"""ASH08 Scanner — locked gates SELECT / WATCH / REJECT."""
 from __future__ import annotations
-import argparse, json, logging
+
+import argparse
+import json
+import logging
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -10,6 +13,7 @@ LOG = logging.getLogger("ash08.scanner")
 ADV20_MIN, TURNOVER_CR_MIN, STALE_MAX_DAYS = 200_000, 5.0, 7
 MOM_MIN, SCORE_SELECT, SCORE_WATCH, CORR_MAX = 0.0, 70.0, 55.0, 0.85
 MOM_WEIGHT, QUAL_WEIGHT = 0.65, 0.35
+
 
 @dataclass
 class StockMetrics:
@@ -23,11 +27,13 @@ class StockMetrics:
     segment: str = ""
     ltp: Optional[float] = None
 
+
 @dataclass
 class ParamHit:
     param_id: str
     passed: bool
     detail: str
+
 
 @dataclass
 class ScanRow:
@@ -35,21 +41,46 @@ class ScanRow:
     decision: str
     score: float
     segment: str = ""
+    ltp: Optional[float] = None
     reason: str = ""
     hits: List[ParamHit] = field(default_factory=list)
-    def to_dict(self):
+    hard_pass: bool = False
+
+    def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
+
+
+@dataclass
+class ScanSnapshot:
+    asof: str
+    universe_bucket: str
+    universe_count: int
+    select_count: int
+    watch_count: int
+    reject_count: int
+    rows: List[Dict[str, Any]] = field(default_factory=list)
+    notes: List[str] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
 
 def mom_return_to_score(m: float) -> float:
     return max(0.0, min(100.0, 50.0 + m * 200.0))
+
 
 def compute_final_score(mom_6m, quality_score):
     mom_s = 50.0 if mom_6m is None else mom_return_to_score(mom_6m)
     qual = 50.0 if quality_score is None else max(0.0, min(100.0, float(quality_score)))
     return round(MOM_WEIGHT * mom_s + QUAL_WEIGHT * qual, 2)
 
+
 def evaluate_stock(m: StockMetrics) -> ScanRow:
-    hits = []
+    hits: List[ParamHit] = []
     adv_ok = True if m.adv20 is None else m.adv20 >= ADV20_MIN
     hits.append(ParamHit("P-ADV20", adv_ok, f"adv20={m.adv20}"))
     t_ok = True if m.turnover_cr_5d is None else m.turnover_cr_5d >= TURNOVER_CR_MIN
@@ -69,7 +100,43 @@ def evaluate_stock(m: StockMetrics) -> ScanRow:
         decision, reason = "WATCH", f"score {score} in watch band"
     else:
         decision, reason = "REJECT", "hard fail or low score"
-    return ScanRow(m.symbol, decision, score, m.segment, reason, hits)
+    return ScanRow(
+        symbol=m.symbol,
+        decision=decision,
+        score=score,
+        segment=m.segment,
+        ltp=m.ltp,
+        reason=reason,
+        hits=hits,
+        hard_pass=hard,
+    )
+
+
+def run_scan(
+    metrics: Sequence[StockMetrics],
+    universe_bucket: str = "core",
+    require_metrics: bool = False,
+) -> ScanSnapshot:
+    rows = [evaluate_stock(m) for m in metrics]
+    rows_sorted = sorted(
+        rows,
+        key=lambda r: (
+            0 if r.decision == "SELECT" else 1 if r.decision == "WATCH" else 2,
+            -r.score,
+            r.symbol,
+        ),
+    )
+    return ScanSnapshot(
+        asof=_utc_now_iso(),
+        universe_bucket=universe_bucket,
+        universe_count=len(rows_sorted),
+        select_count=sum(1 for r in rows_sorted if r.decision == "SELECT"),
+        watch_count=sum(1 for r in rows_sorted if r.decision == "WATCH"),
+        reject_count=sum(1 for r in rows_sorted if r.decision == "REJECT"),
+        rows=[r.to_dict() for r in rows_sorted],
+        notes=[f"SCORE_SELECT={SCORE_SELECT}", f"SCORE_WATCH={SCORE_WATCH}"],
+    )
+
 
 def demo_metrics():
     return [
@@ -79,6 +146,7 @@ def demo_metrics():
         StockMetrics("THINNAME", 50_000, 1, 1, 0.2, 80, 0.2, "", 100),
     ]
 
+
 def main():
     logging.basicConfig(level=logging.INFO)
     p = argparse.ArgumentParser()
@@ -87,15 +155,11 @@ def main():
     args = p.parse_args()
     if not args.demo:
         p.error("use --demo")
-    rows = [evaluate_stock(m) for m in demo_metrics()]
-    rows.sort(key=lambda r: (0 if r.decision=="SELECT" else 1 if r.decision=="WATCH" else 2, -r.score))
-    out = {"select": sum(1 for r in rows if r.decision=="SELECT"),
-           "watch": sum(1 for r in rows if r.decision=="WATCH"),
-           "reject": sum(1 for r in rows if r.decision=="REJECT"),
-           "rows": [r.to_dict() for r in rows]}
+    snap = run_scan(demo_metrics(), universe_bucket="demo")
     Path(args.data_dir).mkdir(parents=True, exist_ok=True)
-    Path(args.data_dir, "scan_latest.json").write_text(json.dumps(out, indent=2))
-    print(json.dumps({k: out[k] for k in ("select","watch","reject")}, indent=2))
+    Path(args.data_dir, "scan_latest.json").write_text(json.dumps(snap.to_dict(), indent=2))
+    print(json.dumps({"select": snap.select_count, "watch": snap.watch_count, "reject": snap.reject_count}, indent=2))
+
 
 if __name__ == "__main__":
     main()
