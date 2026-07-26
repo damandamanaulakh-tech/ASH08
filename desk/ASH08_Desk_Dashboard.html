@@ -1,1 +1,254 @@
-PLACEHOLDER
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>ASH08 Desk</title>
+<style>
+:root{--bg:#0b1220;--panel:#121a2b;--panel2:#182338;--line:#27334d;--text:#e8eefc;--muted:#93a0bb;--accent:#3b82f6;--chip:#243049}
+*{box-sizing:border-box}body{margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;background:var(--bg);color:var(--text)}
+.top{display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--line);background:#0e1627;position:sticky;top:0;z-index:20}
+.brand{display:flex;gap:12px;align-items:center}.logo{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#2563eb,#06b6d4);display:grid;place-items:center;font-weight:800}
+.brand h1{margin:0;font-size:18px}.brand p{margin:0;color:var(--muted);font-size:12px}
+.badges{display:flex;gap:8px;flex-wrap:wrap}.badge{font-size:11px;padding:6px 10px;border-radius:999px;background:var(--chip);border:1px solid var(--line);color:var(--muted)}
+.badge.on{color:#dbeafe;border-color:#1d4ed8;background:#172554}.badge.ok{color:#dcfce7;border-color:#166534;background:#052e16}
+.layout{display:grid;grid-template-columns:210px 1fr;min-height:calc(100vh - 64px)}
+nav{border-right:1px solid var(--line);background:#0e1627;padding:14px 10px;position:sticky;top:64px;height:calc(100vh - 64px);overflow:auto}
+nav button{width:100%;text-align:left;background:transparent;border:0;color:var(--muted);padding:12px;border-radius:10px;margin-bottom:4px;cursor:pointer;font-size:13px}
+nav button.active,nav button:hover{background:var(--panel2);color:var(--text)}
+main{padding:16px 18px 40px}.view{display:none}.view.active{display:block}
+.banner{background:linear-gradient(90deg,#172554,#0f172a);border:1px solid #1e3a8a;border-radius:12px;padding:12px 14px;margin-bottom:14px;font-size:13px;line-height:1.5;color:#dbeafe}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px}.kpi span{display:block;color:var(--muted);font-size:11px;margin-bottom:6px}.kpi strong{font-size:20px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:14px}
+.panel-h{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 14px;border-bottom:1px solid var(--line);background:var(--panel2)}.panel-h h3{margin:0;font-size:14px}
+.tools{display:flex;gap:8px;flex-wrap:wrap}.tools input,.tools select,.tools button{background:#0b1220;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:8px 10px;font-size:12px}
+.tools button.primary{background:var(--accent);border-color:#2563eb;font-weight:600;cursor:pointer}
+table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left}th{color:var(--muted);background:#10192c}
+.tag{display:inline-block;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:600}.select{background:#052e16;color:#86efac}.watch{background:#422006;color:#fcd34d}.reject{background:#450a0a;color:#fca5a5}
+.chip{display:inline-block;padding:3px 8px;border-radius:6px;background:var(--chip);color:var(--muted);font-size:11px}.chip.pass{color:#86efac;background:#052e16}.chip.fail{color:#fca5a5;background:#450a0a}
+.muted{color:var(--muted)}.grid2{display:grid;grid-template-columns:1.2fr .8fr;gap:14px}.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}.card h4{margin:0 0 10px;font-size:14px}.row{display:flex;justify-content:space-between;margin:7px 0;font-size:12px}
+.piano{display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:10px;padding:14px}
+.note{background:#0b1220;border:1px solid var(--line);border-radius:12px;padding:14px;font-size:12px;cursor:pointer;min-height:100px}.note:hover,.note.active{border-color:var(--accent);background:#172554}
+.note strong{display:block;margin-bottom:6px}.note em{color:var(--muted);font-style:normal;display:block}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.form-grid label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px}
+.form-grid input,.form-grid select{width:100%;background:#0b1220;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:9px;font-size:12px}
+.btn-row{display:flex;gap:8px;margin-top:12px}.btn-row button,.buy,.ghost{flex:1;border:0;border-radius:8px;padding:11px;font-weight:700;cursor:pointer;font-size:12px}
+.buy{background:#16a34a;color:#fff}.ghost{background:#1f2937;color:var(--text)}
+.exp{height:12px;border-radius:999px;background:#1f2937;overflow:hidden;margin-top:10px}.exp>i{display:block;height:100%;background:linear-gradient(90deg,#22c55e,#eab308,#ef4444)}
+.chart-box{height:160px;border:1px dashed var(--line);border-radius:10px;display:grid;place-items:center;color:var(--muted);background:#0b1220;margin:10px 0}
+.split-detail{display:grid;grid-template-columns:1.1fr .9fr;gap:14px}
+footer{padding:10px 16px;border-top:1px solid var(--line);color:var(--muted);font-size:11px;background:#0e1627}
+@media(max-width:900px){.layout{grid-template-columns:1fr}nav{position:relative;top:0;height:auto;display:flex;flex-wrap:wrap}nav button{width:auto}.piano,.kpis,.grid2,.grid3,.split-detail{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<div class="top"><div class="brand"><div class="logo">A8</div><div><h1>ASH08 Desk</h1><p>Paper desk · Locked params · L0–L4 · Local+Supabase</p></div></div>
+<div class="badges"><span class="badge on">ASH08</span><span class="badge ok">L0–L4 LOCKED</span><span class="badge" id="mode-badge">Local ready</span></div></div>
+<div class="layout">
+<nav>
+<button class="active" data-view="scanner">1. Scanner Desk</button>
+<button data-view="piano">2. Parameter Piano</button>
+<button data-view="detail">3. Stock Detail</button>
+<button data-view="ticket">4. Paper Ticket</button>
+<button data-view="positions">5. Positions / Exits</button>
+<button data-view="governor">6. Risk Governor</button>
+<button data-view="universe">7. Universe Admin</button>
+<button data-view="segments">8. Segments</button>
+</nav>
+<main>
+<section class="view active" id="view-scanner">
+<div class="banner"><strong>Scanner Desk</strong> — Core universe · SELECT / WATCH / REJECT · auto-seeds if empty</div>
+<div class="kpis">
+<div class="kpi"><span>Core universe</span><strong id="kpi-core">—</strong></div>
+<div class="kpi"><span>Passed today</span><strong id="kpi-passed">—</strong></div>
+<div class="kpi"><span>Open positions</span><strong>0</strong></div>
+<div class="kpi"><span>Governor</span><strong id="kpi-gov">L0</strong></div>
+</div>
+<div class="panel"><div class="panel-h"><h3>Best stocks after gates</h3>
+<div class="tools">
+<button class="primary" onclick="runScan()">Run scan</button>
+<button onclick="runDemo()">Seed demo</button>
+</div></div>
+<table><thead><tr><th>Symbol</th><th>Decision</th><th>Score</th><th>Reason</th><th></th></tr></thead>
+<tbody id="scan-body"><tr><td colspan="5" class="muted" style="text-align:center;padding:24px">Loading…</td></tr></tbody></table></div>
+</section>
+<section class="view" id="view-piano">
+<div class="banner"><strong>Parameter Piano</strong> — click a note</div>
+<div class="panel"><div class="piano">
+<div class="note active" onclick="selectNote(this,'adv')"><strong>P-ADV20</strong><em>ADV20 ≥ 2L</em></div>
+<div class="note" onclick="selectNote(this,'turn')"><strong>P-TURNOVER</strong><em>≥ ₹5 Cr</em></div>
+<div class="note" onclick="selectNote(this,'stale')"><strong>P-STALE</strong><em>≤ 7 days</em></div>
+<div class="note" onclick="selectNote(this,'mom')"><strong>P-MOM</strong><em>6M > 0</em></div>
+<div class="note" onclick="selectNote(this,'score')"><strong>P-SCORE</strong><em>0.65 / 0.35</em></div>
+<div class="note" onclick="selectNote(this,'corr')"><strong>P-CORR</strong><em>≤ 0.85</em></div>
+<div class="note" onclick="selectNote(this,'select')"><strong>P-SELECT</strong><em>≥ 70 + gates</em></div>
+<div class="note" onclick="selectNote(this,'gov')"><strong>P-GOV</strong><em>L0–L4</em></div>
+</div></div>
+<div class="card"><h4 id="noteTitle">P-ADV20</h4><p class="muted" id="noteBody">ADV20 ≥ 200,000 shares.</p></div>
+</section>
+<section class="view" id="view-detail">
+<div class="banner"><strong>Stock Detail</strong></div>
+<div class="split-detail">
+<div class="card"><h4 id="det-sym">Symbol</h4>
+<div class="row"><span class="muted">Decision</span><span class="tag watch" id="det-dec">—</span></div>
+<div class="row"><span class="muted">Score</span><strong id="det-score">—</strong></div>
+<div class="chart-box">Chart next</div>
+<p class="muted" id="det-reason">Select from Scanner</p></div>
+<div class="card"><h4>Hits</h4><div id="det-hits">—</div>
+<div class="btn-row"><button class="buy" onclick="showView('ticket')">Paper ticket</button><button class="ghost" onclick="showView('scanner')">Back</button></div></div>
+</div></section>
+<section class="view" id="view-ticket">
+<div class="banner"><strong>Paper Ticket</strong> — paper only</div>
+<div class="card"><div class="form-grid">
+<div><label>Symbol</label><input id="tk-sym"/></div><div><label>Qty</label><input id="tk-qty" value="1"/></div>
+<div><label>Stop</label><input id="tk-stop"/></div><div><label>Target</label><input id="tk-target"/></div>
+</div><div class="btn-row"><button class="buy">PAPER BUY</button><button class="ghost">Cancel</button></div></div>
+</section>
+<section class="view" id="view-positions">
+<div class="banner"><strong>Positions / Exits</strong></div>
+<div class="panel"><table><thead><tr><th>Symbol</th><th>Qty</th><th>Entry</th><th>Stop</th><th>Target</th><th>Status</th></tr></thead>
+<tbody><tr><td colspan="6" class="muted" style="text-align:center;padding:20px">No positions yet</td></tr></tbody></table></div>
+</section>
+<section class="view" id="view-governor">
+<div class="banner"><strong>Risk Governor L0–L4</strong></div>
+<div class="grid2">
+<div class="card"><h4>Live</h4><div class="row"><span class="muted">Level</span><strong id="gov-level">L0</strong></div>
+<div class="row"><span class="muted">Exposure</span><strong id="gov-exp">100%</strong></div>
+<div class="exp"><i id="gov-bar" style="width:100%"></i></div></div>
+<div class="card"><h4>Locked</h4><table><thead><tr><th>L</th><th>Condition</th><th>%</th></tr></thead>
+<tbody><tr><td>L0</td><td>No damage</td><td>100</td></tr><tr><td>L1</td><td>Damage</td><td>70</td></tr><tr><td>L2</td><td>+1 FII</td><td>50</td></tr><tr><td>L3</td><td>+≥2 FII</td><td>25</td></tr><tr><td>L4</td><td>Q10+sell</td><td>15</td></tr></tbody></table></div>
+</div></section>
+<section class="view" id="view-universe">
+<div class="banner"><strong>Universe</strong> — Core weekly 150–250 · Local JSON primary</div>
+<div class="grid3">
+<div class="card"><h4>Core</h4><div class="row"><span class="muted">Size</span><strong id="uni-core">—</strong></div><div class="row"><span class="muted">Refresh</span><strong>Weekly / Demo</strong></div></div>
+<div class="card"><h4>Discovery</h4><div class="row"><span class="muted">Size</span><strong>≤5000</strong></div></div>
+<div class="card"><h4>Store</h4><div class="row"><span class="muted">Backend</span><strong>Local + Supabase</strong></div></div>
+</div></section>
+<section class="view" id="view-segments">
+<div class="banner"><strong>Segments</strong> — filters only</div>
+<div class="grid3"><div class="card"><h4>IT</h4></div><div class="card"><h4>Finance</h4></div><div class="card"><h4>Energy</h4></div>
+<div class="card"><h4>Auto</h4></div><div class="card"><h4>Metals</h4></div><div class="card"><h4>Defence</h4></div></div>
+</section>
+</main></div>
+<footer>ASH08 Desk · Scanner · Piano · Ticket · Governor · Local JSON primary · Paper only</footer>
+<script>
+function showView(id){
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));
+  const v=document.getElementById('view-'+id); if(v) v.classList.add('active');
+  const b=document.querySelector('nav button[data-view="'+id+'"]'); if(b) b.classList.add('active');
+}
+document.querySelectorAll('nav button').forEach(btn=>btn.addEventListener('click',()=>showView(btn.dataset.view)));
+const NOTE={
+  adv:{t:'P-ADV20',b:'ADV20 ≥ 200,000 shares'},
+  turn:{t:'P-TURNOVER',b:'5D turnover ≥ ₹5 Cr'},
+  stale:{t:'P-STALE',b:'Candle age ≤ 7 days'},
+  mom:{t:'P-MOM',b:'6M return > 0'},
+  score:{t:'P-SCORE',b:'0.65×mom + 0.35×quality'},
+  corr:{t:'P-CORR',b:'Corr ≤ 0.85 vs book'},
+  select:{t:'P-SELECT',b:'Score ≥ 70 + hard gates'},
+  gov:{t:'P-GOV',b:'L0–L4: 100/70/50/25/15'}
+};
+function selectNote(el,id){
+  document.querySelectorAll('.note').forEach(n=>n.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('noteTitle').textContent=NOTE[id].t;
+  document.getElementById('noteBody').textContent=NOTE[id].b;
+}
+function renderRows(rows, selectCount){
+  const body=document.getElementById('scan-body');
+  document.getElementById('kpi-passed').textContent = selectCount != null ? selectCount : '—';
+  if(!rows || !rows.length){
+    body.innerHTML='<tr><td colspan="5" class="muted" style="text-align:center;padding:24px">Empty — click Seed demo</td></tr>';
+    return;
+  }
+  body.innerHTML=rows.slice(0,40).map(row=>{
+    const d=(row.decision||'').toUpperCase();
+    const cls=d==='SELECT'?'select':d==='WATCH'?'watch':'reject';
+    return '<tr><td><strong>'+(row.symbol||'')+'</strong></td>'
+      +'<td><span class="tag '+cls+'">'+d+'</span></td>'
+      +'<td>'+(row.score!=null?row.score:'')+'</td>'
+      +'<td class="muted">'+(row.reason||'')+'</td>'
+      +'<td><button class="ghost" style="padding:6px 10px;flex:none" onclick=\'openDetail('+JSON.stringify(row)+')\'>View</button></td></tr>';
+  }).join('');
+}
+async function loadScan(){
+  const body=document.getElementById('scan-body');
+  body.innerHTML='<tr><td colspan="5" class="muted" style="text-align:center;padding:20px">Loading…</td></tr>';
+  try{
+    const r=await fetch('/api/scan/latest');
+    const data=await r.json();
+    renderRows(data.rows||[], data.select_count);
+  }catch(e){
+    body.innerHTML='<tr><td colspan="5" class="muted" style="text-align:center;padding:24px">'+e+'</td></tr>';
+  }
+}
+async function runDemo(){
+  const body=document.getElementById('scan-body');
+  body.innerHTML='<tr><td colspan="5" class="muted" style="text-align:center;padding:20px">Seeding demo…</td></tr>';
+  try{
+    const r=await fetch('/api/demo/run');
+    const d=await r.json();
+    if(d.ok){
+      document.getElementById('mode-badge').textContent='Demo seeded';
+      document.getElementById('kpi-core').textContent=d.core_count||'—';
+      await loadScan();
+    }else{
+      body.innerHTML='<tr><td colspan="5" class="muted" style="text-align:center;padding:24px">'+(d.error||'seed failed')+'</td></tr>';
+    }
+  }catch(e){
+    body.innerHTML='<tr><td colspan="5" class="muted" style="text-align:center;padding:24px">'+e+'</td></tr>';
+  }
+}
+async function runScan(){
+  const body=document.getElementById('scan-body');
+  body.innerHTML='<tr><td colspan="5" class="muted" style="text-align:center;padding:20px">Scanning…</td></tr>';
+  try{
+    const r=await fetch('/api/scan/run');
+    const d=await r.json();
+    if(d.ok){
+      document.getElementById('mode-badge').textContent=d.mode||'scan ok';
+      await loadScan();
+    }else{
+      await runDemo();
+    }
+  }catch(e){
+    await runDemo();
+  }
+}
+function openDetail(row){
+  document.getElementById('det-sym').textContent=row.symbol||'';
+  document.getElementById('det-dec').textContent=row.decision||'—';
+  document.getElementById('det-score').textContent=row.score!=null?row.score:'—';
+  document.getElementById('det-reason').textContent=row.reason||'';
+  document.getElementById('det-hits').innerHTML=(row.hits||[]).map(h=>
+    '<div class="row"><span>'+h.param_id+'</span><span class="chip '+(h.passed?'pass':'fail')+'">'+(h.passed?'PASS':'FAIL')+'</span></div>'
+  ).join('')||'—';
+  document.getElementById('tk-sym').value=row.symbol||'';
+  showView('detail');
+}
+async function loadHealth(){
+  try{
+    const r=await fetch('/api/health');
+    const d=await r.json();
+    const s=d.store||{};
+    if(s.local_scan_exists) document.getElementById('mode-badge').textContent='Local ready';
+    if(s.supabase_reachable) document.getElementById('mode-badge').textContent='Supabase OK';
+  }catch(e){}
+  try{
+    const u=await fetch('/api/universe/core');
+    const ud=await u.json();
+    if(ud.count){
+      document.getElementById('kpi-core').textContent=ud.count;
+      document.getElementById('uni-core').textContent=ud.count;
+    }
+  }catch(e){}
+  await loadScan();
+}
+loadHealth();
+</script>
+</body>
+</html>
