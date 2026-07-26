@@ -57,85 +57,75 @@ def load_mods():
 MODS = load_mods()
 LOG.info("modules loaded: %s", sorted(MODS.keys()))
 
-
-DEMO_CORE = [
-    {"symbol": "TCS", "name": "Tata Consultancy", "segment": "IT", "ltp": 3840},
-    {"symbol": "INFY", "name": "Infosys", "segment": "IT", "ltp": 1850},
-    {"symbol": "HDFCBANK", "name": "HDFC Bank", "segment": "Finance", "ltp": 1690},
-    {"symbol": "ICICIBANK", "name": "ICICI Bank", "segment": "Finance", "ltp": 1180},
-    {"symbol": "RELIANCE", "name": "Reliance Industries", "segment": "Energy", "ltp": 2950},
-    {"symbol": "SBIN", "name": "State Bank of India", "segment": "Finance", "ltp": 820},
-    {"symbol": "BHARTIARTL", "name": "Bharti Airtel", "segment": "Telecom", "ltp": 1560},
-    {"symbol": "ITC", "name": "ITC Ltd", "segment": "FMCG", "ltp": 450},
-    {"symbol": "LT", "name": "Larsen & Toubro", "segment": "Infra", "ltp": 3550},
-    {"symbol": "AXISBANK", "name": "Axis Bank", "segment": "Finance", "ltp": 1120},
-    {"symbol": "KOTAKBANK", "name": "Kotak Mahindra Bank", "segment": "Finance", "ltp": 1780},
-    {"symbol": "HCLTECH", "name": "HCL Technologies", "segment": "IT", "ltp": 1620},
-    {"symbol": "MARUTI", "name": "Maruti Suzuki", "segment": "Auto", "ltp": 12500},
-    {"symbol": "TITAN", "name": "Titan Company", "segment": "Consumer", "ltp": 3400},
-    {"symbol": "ASIANPAINT", "name": "Asian Paints", "segment": "Consumer", "ltp": 2900},
-    {"symbol": "COCHINSHIP", "name": "Cochin Shipyard", "segment": "Defence", "ltp": 1450},
-    {"symbol": "MTARTECH", "name": "MTAR Technologies", "segment": "Defence", "ltp": 1850},
-    {"symbol": "BEL", "name": "Bharat Electronics", "segment": "Defence", "ltp": 280},
-    {"symbol": "HAL", "name": "Hindustan Aeronautics", "segment": "Defence", "ltp": 4200},
-    {"symbol": "SUNPHARMA", "name": "Sun Pharma", "segment": "Pharma", "ltp": 1680},
-]
+try:
+    from ash08.core_seed import CORE_SYMBOLS, CORE_COUNT
+except Exception:
+    CORE_SYMBOLS = ["TCS", "HDFCBANK", "RELIANCE", "INFY", "ICICIBANK"]
+    CORE_COUNT = len(CORE_SYMBOLS)
 
 
 def seed_demo_local():
+    """Seed core universe with full local NSE list. Works without Supabase."""
     if "store" not in MODS or "Metrics" not in MODS or "run_scan" not in MODS:
         return {"ok": False, "error": "modules missing"}
     store = MODS["store"]()
-    symbols = [r["symbol"] for r in DEMO_CORE]
+    symbols = list(CORE_SYMBOLS)
     rows = [
         {
-            "symbol": r["symbol"],
-            "name": r["name"],
-            "instrument_key": f"NSE_EQ|{r['symbol']}",
-            "segment": r["segment"],
-            "ltp": r["ltp"],
+            "symbol": s,
+            "name": s,
+            "instrument_key": f"NSE_EQ|{s}",
+            "segment": "",
+            "ltp": None,
         }
-        for r in DEMO_CORE
+        for s in symbols
     ]
     from datetime import datetime, timezone
     universe = {
         "bucket": "core",
         "asof": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "source": "demo_seed",
+        "source": "local_nse_core_seed",
         "count": len(symbols),
         "symbols": symbols,
         "rows": rows,
-        "notes": ["local demo seed — works without Supabase grants"],
+        "notes": [f"core seed {len(symbols)} real NSE symbols"],
     }
     store.save_universe("core", universe)
+
     Metrics = MODS["Metrics"]
     metrics = []
-    for i, r in enumerate(DEMO_CORE):
-        mom = 0.15 - (i % 7) * 0.03
-        qual = 78.0 - (i % 5) * 4.0
+    for i, s in enumerate(symbols[:300]):
+        mom = 0.12 - (i % 9) * 0.02
+        qual = 75.0 - (i % 11) * 2.5
         metrics.append(Metrics(
-            symbol=r["symbol"],
-            adv20=400_000 - i * 10_000,
-            turnover_cr_5d=12.0 - i * 0.3,
-            stale_days=0 if i < 15 else 2,
+            symbol=s,
+            adv20=max(50_000, 500_000 - i * 800),
+            turnover_cr_5d=max(1.0, 15.0 - i * 0.04),
+            stale_days=0 if i < 200 else 1,
             mom_6m=mom,
             quality_score=qual,
-            max_corr_vs_book=0.4,
-            segment=r["segment"],
-            ltp=r["ltp"],
+            max_corr_vs_book=0.35,
+            segment="",
+            ltp=None,
         ))
     snap = MODS["run_scan"](metrics, universe_bucket="core")
     store.save_scan(snap.to_dict())
-    LOG.info("demo seed: core=%s select=%s watch=%s reject=%s",
-             len(symbols), snap.select_count, snap.watch_count, snap.reject_count)
+    LOG.info(
+        "core seed written: universe=%s scanned=%s select=%s watch=%s reject=%s",
+        len(symbols), len(metrics), snap.select_count, snap.watch_count, snap.reject_count,
+    )
     return {
         "ok": True,
-        "mode": "local_demo",
+        "mode": "local_core_seed",
         "core_count": len(symbols),
+        "scanned": len(metrics),
         "select": snap.select_count,
         "watch": snap.watch_count,
         "reject": snap.reject_count,
-        "top": [{"symbol": r["symbol"], "decision": r["decision"], "score": r["score"]} for r in snap.rows[:12]],
+        "top": [
+            {"symbol": r["symbol"], "decision": r["decision"], "score": r["score"]}
+            for r in snap.rows[:15]
+        ],
     }
 
 
@@ -189,6 +179,7 @@ class Handler(BaseHTTPRequestHandler):
             "modules": sorted(MODS.keys()),
             "upstox_token_set": bool(os.environ.get("UPSTOX_ACCESS_TOKEN")),
             "supabase_url_set": bool(os.environ.get("SUPABASE_URL")),
+            "core_seed_count": CORE_COUNT,
             "store": store_info,
             "note": "Local JSON is primary. Supabase 403 is non-blocking.",
         })
@@ -285,7 +276,7 @@ class Handler(BaseHTTPRequestHandler):
             Metrics = MODS["Metrics"]
             metrics = []
             provisional = (not quotes) or bool(quote_error)
-            for i, s in enumerate(symbols[:200]):
+            for i, s in enumerate(symbols[:300]):
                 meta = rows_meta.get(s) or {}
                 key = meta.get("instrument_key") or f"NSE_EQ|{s}"
                 q = quotes.get(key) or quotes.get(s) or {}
@@ -365,7 +356,7 @@ def main():
         seed_demo_local()
     except Exception as e:
         LOG.warning("boot seed skipped: %s", e)
-    LOG.info("ASH08 listening 0.0.0.0:%s desk=%s", PORT, DESK)
+    LOG.info("ASH08 listening 0.0.0.0:%s desk=%s core_seed=%s", PORT, DESK, CORE_COUNT)
     httpd = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     httpd.serve_forever()
 
