@@ -1,4 +1,4 @@
-"""ASH08 API — paper trade book wired. Start: python api.py"""
+"""ASH08 API — auto paper-BUY on SELECT + hold/exit plan. Start: python api.py"""
 from __future__ import annotations
 import json, logging, mimetypes, os, sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -78,6 +78,22 @@ def get_engine():
     _ENGINE = eng
     return eng
 
+def auto_buy_from_scan(scan_dict):
+    eng = get_engine()
+    if not eng or not hasattr(eng, "auto_buy_selects"):
+        return None
+    rows = scan_dict.get("rows") or []
+    selects = [r for r in rows if str(r.get("decision") or "").upper() == "SELECT"]
+    if not selects:
+        return {"bought": 0, "skipped": 0, "open_count": len(eng.open_symbols()) if hasattr(eng, "open_symbols") else 0}
+    try:
+        result = eng.auto_buy_selects(selects)
+        LOG.info("auto_select buys=%s open=%s", result.get("bought"), result.get("open_count"))
+        return result
+    except Exception as e:
+        LOG.exception("auto_buy")
+        return {"error": str(e)}
+
 def seed_demo_local():
     if "store" not in MODS or "Metrics" not in MODS or "run_scan" not in MODS:
         return {"ok": False, "error": "modules missing"}
@@ -94,9 +110,11 @@ def seed_demo_local():
                        mom_6m=0.1 - (i%5)*0.02, quality_score=70 - (i%7)*2, ltp=None)
                for i, s in enumerate(symbols[:300])]
     snap = MODS["run_scan"](metrics, universe_bucket="core")
-    store.save_scan(snap.to_dict())
+    scan_dict = snap.to_dict()
+    store.save_scan(scan_dict)
+    auto = auto_buy_from_scan(scan_dict)
     return {"ok": True, "core_count": len(symbols), "select": snap.select_count,
-            "watch": snap.watch_count, "reject": snap.reject_count}
+            "watch": snap.watch_count, "reject": snap.reject_count, "auto_paper": auto}
 
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
@@ -114,10 +132,8 @@ class Handler(BaseHTTPRequestHandler):
         path = unquote(urlparse(self.path).path or "/")
         if path.endswith("/"): path = path[:-1]
         n = int(self.headers.get("Content-Length") or 0)
-        try:
-            body = json.loads(self.rfile.read(n).decode() if n else "{}")
-        except Exception:
-            body = {}
+        try: body = json.loads(self.rfile.read(n).decode() if n else "{}")
+        except Exception: body = {}
         if path == "/api/paper/buy":
             return self.api_paper_buy(body)
         return self.json(404, {"ok": False, "error": "not found"})
@@ -129,13 +145,17 @@ class Handler(BaseHTTPRequestHandler):
         qs = parse_qs(parsed.query or "")
         if path == "/api/health":
             eng = get_engine()
+            if eng and hasattr(eng, "refresh_hold_days"):
+                try: eng.refresh_hold_days()
+                except Exception: pass
             open_n = sum(1 for p in (eng.positions if eng else []) if p.get("status")=="OPEN")
             store_info = {}
             if "store" in MODS:
                 try: store_info = MODS["store"]().health()
                 except Exception as e: store_info = {"error": str(e)}
             return self.json(200, {"ok": True, "service": "ash08-desk", "modules": sorted(MODS.keys()),
-                "core_seed_count": CORE_COUNT, "paper_open": open_n, "store": store_info})
+                "core_seed_count": CORE_COUNT, "paper_open": open_n, "store": store_info,
+                "trade_plan": {"stop_pct": 3.0, "target_pct": 6.0, "max_hold_days": 15, "max_open": 10}})
         if path == "/api/universe/core":
             if "store" not in MODS: return self.json(500, {"ok": False, "error": "store missing"})
             data = MODS["store"]().load_universe("core")
@@ -159,43 +179,55 @@ class Handler(BaseHTTPRequestHandler):
                     "price": (qs.get("price") or [""])[0], "stop": (qs.get("stop") or [""])[0],
                     "target": (qs.get("target") or [""])[0]}
             return self.api_paper_buy(body)
+        if path == "/api/paper/auto":
+            if "store" not in MODS:
+                return self.json(500, {"ok": False, "error": "store missing"})
+            scan = MODS["store"]().load_scan() or {}
+            if not scan.get("rows"):
+                seed_demo_local(); scan = MODS["store"]().load_scan() or {}
+            auto = auto_buy_from_scan(scan)
+            return self.json(200, {"ok": True, "auto_paper": auto})
         return self.serve_static(path)
+
     def api_paper_book(self):
         eng = get_engine()
         if not eng: return self.json(500, {"ok": False, "error": "paper engine missing"})
+        if hasattr(eng, "refresh_hold_days"): eng.refresh_hold_days()
         opens = [p for p in eng.positions if p.get("status") == "OPEN"]
+        closed = [p for p in eng.positions if p.get("status") != "OPEN"]
         gov = eng.governor.to_dict() if hasattr(eng.governor, "to_dict") else {
             "level": getattr(eng.governor, "level", "L0"), "exposure_pct": getattr(eng.governor, "exposure_pct", 100)}
-        return self.json(200, {"ok": True, "governor": gov, "orders": list(reversed(eng.orders[-50:])),
-            "positions": eng.positions, "open": opens, "open_count": len(opens), "order_count": len(eng.orders)})
+        plan = {"stop_pct": 3.0, "target_pct": 6.0, "max_hold_days": 15, "max_open": 10,
+                "exits": ["STOP_HIT", "TARGET_HIT", "MAX_HOLD", "GOVERNOR_CUT", "ROTATION"],
+                "size": "2.5% book x governor exposure"}
+        return self.json(200, {"ok": True, "governor": gov, "plan": plan,
+            "orders": list(reversed(eng.orders[-50:])), "positions": eng.positions,
+            "open": opens, "closed": closed[-20:], "open_count": len(opens), "order_count": len(eng.orders)})
+
     def api_paper_buy(self, body):
         eng = get_engine()
         if not eng: return self.json(500, {"ok": False, "error": "paper engine missing"})
         symbol = str(body.get("symbol") or "").strip().upper()
         if not symbol: return self.json(400, {"ok": False, "error": "symbol required"})
-        try: qty = max(1, int(float(body.get("qty") or 1)))
-        except Exception: qty = 1
+        try: qty = max(1, int(float(body.get("qty") or 50)))
+        except Exception: qty = 50
         def _f(v, d=None):
             if v is None or v == "": return d
             try: return float(v)
             except Exception: return d
-        price = _f(body.get("price"))
-        stop = _f(body.get("stop"))
-        target = _f(body.get("target"))
+        price = _f(body.get("price")); stop = _f(body.get("stop")); target = _f(body.get("target"))
         defaults = {"TCS":3840,"HDFCBANK":1690,"RELIANCE":2950,"INFY":1850,"ICICIBANK":1180,
                     "SBIN":820,"ITC":450,"MTARTECH":1850,"COCHINSHIP":1450,"HAL":4200,"BEL":280}
-        if not price or price <= 0:
-            price = defaults.get(symbol, 100.0)
-        if stop is None: stop = round(price * 0.97, 2)
-        if target is None: target = round(price * 1.06, 2)
+        if not price or price <= 0: price = defaults.get(symbol, 100.0)
         try:
             order = eng.place_order(symbol=symbol, side="BUY", order_type="MARKET",
-                                    qty=qty, fill_price=price, stop=stop, target=target)
+                                    qty=qty, fill_price=price, stop=stop, target=target, source="manual")
         except Exception as e:
             LOG.exception("buy"); return self.json(500, {"ok": False, "error": str(e)})
         opens = [p for p in eng.positions if p.get("status") == "OPEN"]
         return self.json(200, {"ok": True, "order": order, "open_count": len(opens), "positions": opens,
-            "message": f"PAPER {order.get('status')}: {symbol} x {order.get('sized_qty') or order.get('qty')} @ {price}"})
+            "message": f"PAPER {order.get('status')}: {symbol} x {order.get('sized_qty') or order.get('qty')} @ {price} | stop={order.get('stop')} target={order.get('target')} hold={order.get('hold_days')}d"})
+
     def serve_static(self, path):
         candidate = DESK / "ASH08_Desk_Dashboard.html" if path in ("/", "") else (DESK / path.lstrip("/")).resolve()
         if path not in ("/", ""):
@@ -211,6 +243,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-cache")
         self.end_headers(); self.wfile.write(data)
+
     def json(self, code, obj):
         raw = json.dumps(obj, default=str).encode()
         self.send_response(code)
@@ -225,7 +258,7 @@ def main():
     try: seed_demo_local()
     except Exception as e: LOG.warning("seed: %s", e)
     get_engine()
-    LOG.info("ASH08 on 0.0.0.0:%s paper=%s core=%s", PORT, "PaperEngine" in MODS, CORE_COUNT)
+    LOG.info("ASH08 on 0.0.0.0:%s paper=%s core=%s auto_select=ON", PORT, "PaperEngine" in MODS, CORE_COUNT)
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
 
 if __name__ == "__main__":
