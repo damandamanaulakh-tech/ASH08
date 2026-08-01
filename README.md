@@ -1,52 +1,58 @@
-# ASH08 Desk
+# ASH08 Reviewed 50L Desk
 
-**Separate product from AshStocks.**  
-Paper-trading desk for Indian NSE equities: weekly Core universe → locked parameter scanner → paper ticket → Adaptive Risk Governor (L0–L4).
+ASH08 is a separate paper-trading product for Indian NSE equities. It combines a validated universe, strict scanner, paper-accounting engine, and Adaptive Risk Governor.
 
-## Do not mix with AshStocks
+## Approved runtime baseline
 
-| Product | Repo | Deploy |
-|---------|------|--------|
-| AshStocks | `AshStocks` | existing Render `ashstocks-api` |
-| **ASH08** | **this repo** | **own Render service** |
+- Book value: ₹50,00,000
+- SELECT: score >= 67
+- WATCH: 60 <= score < 67
+- Incomplete mandatory evidence: UNKNOWN
+- ADV20 >= 2,00,000 shares/day
+- Five-day turnover >= ₹5 crore
+- Stale data <= 7 days
+- Six-month momentum > 0
+- Maximum correlation vs book <= 0.85
+- Per-name cap: 2.5% multiplied by governor exposure
+- Maximum open positions: 10
+- Stop / target / maximum hold: -3% / +6% / 15 trading sessions
+- Buy and sell cost assumptions: 0.10% each
+- Governor exposure L0/L1/L2/L3/L4: 100/70/50/25/15%
 
-## Modules
-
-| Path | Phase | Role |
-|------|-------|------|
-| `ash08/universe.py` | 2 | Core 150–250 (weekly) + Discovery |
-| `ash08/scanner.py` | 3 | SELECT / WATCH / REJECT (locked gates) |
-| `ash08/paper_engine.py` | 4 | Paper ticket, positions, exits |
-| `ash08/adaptive_risk_governor.py` | 4 | L0–L4 exposure 100/70/50/25/15 |
-| `desk/ASH08_Desk_Dashboard.html` | 1 | UI layout (locked) |
-
-## Quick run (local)
+## Run locally
 
 ```bash
 pip install -r requirements.txt
-python ash08/universe.py --demo --data-dir ash08_data
-python ash08/scanner.py --demo --data-dir ash08_data
-python ash08/paper_engine.py --demo --data-dir ash08_data
+python api.py
 ```
 
-## Render (own service)
+The dashboard is served from `/`. Health and configuration are available from `/api/health`.
 
-1. New Web Service → connect **this** repo `ASH08`
-2. Runtime: **Python 3**
-3. Build: `pip install -r requirements.txt`
-4. Start: `python -m http.server $PORT --directory desk`  *(static desk for now)*  
-   or later: `uvicorn api:app --host 0.0.0.0 --port $PORT` when API is added
-5. Service name suggestion: **`ash08-desk`**
-6. Do **not** point AshStocks Render at this repo
+## Render deployment
 
-## Locked rules (summary)
+The repository includes `render.yaml` with:
 
-- Core universe weekly 150–250; Discovery on demand
-- Gates: ADV20 ≥ 2L, turnover ≥ ₹5 Cr, stale ≤ 7d, mom > 0, score 0.65/0.35
-- SELECT ≥ 70, WATCH ≥ 55
-- Paper only; max name 2.5% × governor exposure
-- Governor L0–L4: 100 / 70 / 50 / 25 / 15
+- service name `ash08-desk`
+- start command `python api.py`
+- HTTP health gate `/api/health`
+- automatic deploys from the linked branch
+- the approved non-secret ₹50 lakh runtime parameters
 
-## Status
+Secrets such as Upstox and Supabase credentials must be configured only in Render environment settings and must not be committed.
 
-Phases 0–4 complete offline. Live API shell is optional next step on **this** repo only.
+## Important operating rule
+
+Core scanning remains blocked until real point-in-time ADV20, turnover, momentum, quality, correlation, and freshness evidence is populated. ASH08 does not invent missing metrics, prices, fills, or profits.
+
+## Main components
+
+| Path | Role |
+|---|---|
+| `api.py` | HTTP API, dashboard serving, request validation and mutation controls |
+| `ash08/config.py` | Central versioned runtime parameters |
+| `ash08/universe.py` | Discovery and strict Core universe construction |
+| `ash08/scanner.py` | SELECT / WATCH / REJECT / UNKNOWN evaluation |
+| `ash08/paper_engine.py` | Durable paper orders, positions, exits, cash and P&L |
+| `ash08/upstox_client.py` | Instrument master, exact keys and live quotes |
+| `desk/` | Truth-first browser dashboard |
+| `tests/` | Reviewed-baseline regression tests |
