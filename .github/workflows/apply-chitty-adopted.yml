@@ -1,0 +1,44 @@
+name: Apply adopted Chitty net-new items
+
+on:
+  push:
+    branches: [feature/chitty-net-new-adopted]
+    paths: [.github/workflows/apply-chitty-adopted.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Assemble additive implementation
+        run: python tools/apply_chitty_adopted.py
+      - name: Validate assembled implementation
+        run: |
+          python -m py_compile api.py ash08/*.py
+          python -m unittest discover -s tests -v
+          python - <<'PY'
+          from ash08.chitty_adopted import registry_payload
+          from ash08.config import BOOK_VALUE, SCORE_SELECT, SCORE_WATCH, MAX_NAME_PCT
+          registry = registry_payload()
+          assert registry['adopted_count'] == 31
+          assert registry['discussion_queue_included'] == 0
+          assert registry['decision_impact'] is False
+          assert BOOK_VALUE == 5_000_000
+          assert SCORE_SELECT == 67
+          assert SCORE_WATCH == 60
+          assert MAX_NAME_PCT == 2.5
+          PY
+      - name: Commit assembled files and remove staging assets
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m 'Wire 31 adopted Chitty net-new items without decision impact'
+          git push
