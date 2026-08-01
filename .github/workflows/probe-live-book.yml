@@ -1,0 +1,42 @@
+name: Probe live ASH08 paper book
+
+on:
+  push:
+    branches: ["ops/read-live-paper-book"]
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe likely Render service URL
+        shell: bash
+        run: |
+          set -u
+          base="https://ash08-desk.onrender.com"
+          echo "PROBE_BASE=$base"
+          echo "--- health ---"
+          curl -sS --connect-timeout 20 --max-time 120 -D /tmp/health_headers "$base/api/health" -o /tmp/health_body || true
+          cat /tmp/health_headers 2>/dev/null || true
+          cat /tmp/health_body 2>/dev/null || true
+          echo
+          echo "--- paper book ---"
+          curl -sS --connect-timeout 20 --max-time 120 -D /tmp/book_headers "$base/api/paper/book" -o /tmp/book_body || true
+          cat /tmp/book_headers 2>/dev/null || true
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('/tmp/book_body')
+          if not p.exists():
+              print('NO_BOOK_BODY')
+              raise SystemExit(0)
+          text = p.read_text(errors='replace')
+          try:
+              data = json.loads(text)
+          except Exception:
+              print(text[:5000])
+              raise SystemExit(0)
+          print(json.dumps(data, indent=2, sort_keys=True))
+          PY
