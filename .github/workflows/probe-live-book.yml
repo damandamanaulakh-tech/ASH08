@@ -20,21 +20,29 @@ jobs:
           base="https://ash08-desk.onrender.com"
           cookie=/tmp/ash08.cookies
 
-          echo "--- session ---"
-          curl -sS --connect-timeout 20 --max-time 120 \
-            -c "$cookie" \
-            -H "Origin: $base" \
+          curl -sS --fail-with-body --connect-timeout 20 --max-time 120 \
+            -c "$cookie" -H "Origin: $base" \
             "$base/api/session" -o /tmp/session.json
-          cat /tmp/session.json
           csrf=$(python - <<'PY'
           import json
           print(json.load(open('/tmp/session.json'))['csrf_token'])
           PY
           )
 
-          echo
-          echo "--- restore order ---"
-          curl -sS --fail-with-body --connect-timeout 20 --max-time 120 \
+          echo "--- refresh validated NSE instruments ---"
+          code=$(curl -sS --connect-timeout 20 --max-time 180 \
+            -b "$cookie" \
+            -H "Origin: $base" \
+            -H "X-CSRF-Token: $csrf" \
+            -H "Content-Type: application/json" \
+            -X POST "$base/api/universe/refresh" \
+            --data '{}' -o /tmp/universe.json -w '%{http_code}')
+          echo "HTTP $code"
+          python -m json.tool /tmp/universe.json
+          test "$code" = "200"
+
+          echo "--- restore TCS at original entry ---"
+          code=$(curl -sS --connect-timeout 20 --max-time 120 \
             -b "$cookie" \
             -H "Origin: $base" \
             -H "X-CSRF-Token: $csrf" \
@@ -42,10 +50,11 @@ jobs:
             -H "Idempotency-Key: restore:tcs:3840:50l-v1" \
             -X POST "$base/api/paper/buy" \
             --data '{"symbol":"TCS","qty":50,"price":3840,"hold_sessions":15}' \
-            -o /tmp/order.json
+            -o /tmp/order.json -w '%{http_code}')
+          echo "HTTP $code"
           python -m json.tool /tmp/order.json
+          test "$code" = "200"
 
-          echo
           echo "--- verified paper book ---"
           curl -sS --fail-with-body --connect-timeout 20 --max-time 120 \
             "$base/api/paper/book" -o /tmp/book.json
