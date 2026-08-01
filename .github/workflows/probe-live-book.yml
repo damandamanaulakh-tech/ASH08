@@ -3,6 +3,8 @@ name: Probe live ASH08 paper book
 on:
   push:
     branches: ["ops/read-live-paper-book"]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: read
