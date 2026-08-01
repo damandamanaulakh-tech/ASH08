@@ -1,4 +1,4 @@
-name: Probe live ASH08 paper book
+name: Restore approved TCS paper position
 
 on:
   push:
@@ -10,35 +10,54 @@ permissions:
   contents: read
 
 jobs:
-  probe:
+  restore:
     runs-on: ubuntu-latest
     steps:
-      - name: Probe likely Render service URL
+      - name: Restore at original entry and verify live book
         shell: bash
         run: |
-          set -u
+          set -euo pipefail
           base="https://ash08-desk.onrender.com"
-          echo "PROBE_BASE=$base"
-          echo "--- health ---"
-          curl -sS --connect-timeout 20 --max-time 120 -D /tmp/health_headers "$base/api/health" -o /tmp/health_body || true
-          cat /tmp/health_headers 2>/dev/null || true
-          cat /tmp/health_body 2>/dev/null || true
+          cookie=/tmp/ash08.cookies
+
+          echo "--- session ---"
+          curl -sS --connect-timeout 20 --max-time 120 \
+            -c "$cookie" \
+            -H "Origin: $base" \
+            "$base/api/session" -o /tmp/session.json
+          cat /tmp/session.json
+          csrf=$(python - <<'PY'
+          import json
+          print(json.load(open('/tmp/session.json'))['csrf_token'])
+          PY
+          )
+
           echo
-          echo "--- paper book ---"
-          curl -sS --connect-timeout 20 --max-time 120 -D /tmp/book_headers "$base/api/paper/book" -o /tmp/book_body || true
-          cat /tmp/book_headers 2>/dev/null || true
+          echo "--- restore order ---"
+          curl -sS --fail-with-body --connect-timeout 20 --max-time 120 \
+            -b "$cookie" \
+            -H "Origin: $base" \
+            -H "X-CSRF-Token: $csrf" \
+            -H "Content-Type: application/json" \
+            -H "Idempotency-Key: restore:tcs:3840:50l-v1" \
+            -X POST "$base/api/paper/buy" \
+            --data '{"symbol":"TCS","qty":50,"price":3840,"hold_sessions":15}' \
+            -o /tmp/order.json
+          python -m json.tool /tmp/order.json
+
+          echo
+          echo "--- verified paper book ---"
+          curl -sS --fail-with-body --connect-timeout 20 --max-time 120 \
+            "$base/api/paper/book" -o /tmp/book.json
           python - <<'PY'
           import json
-          from pathlib import Path
-          p = Path('/tmp/book_body')
-          if not p.exists():
-              print('NO_BOOK_BODY')
-              raise SystemExit(0)
-          text = p.read_text(errors='replace')
-          try:
-              data = json.loads(text)
-          except Exception:
-              print(text[:5000])
-              raise SystemExit(0)
+          data=json.load(open('/tmp/book.json'))
           print(json.dumps(data, indent=2, sort_keys=True))
+          opens=data.get('open') or []
+          assert len(opens)==1, f"expected one open position, got {len(opens)}"
+          p=opens[0]
+          assert p['symbol']=='TCS', p
+          assert int(p['qty'])==32, p
+          assert float(p['entry'])==3840.0, p
+          assert round(float(data['gross_exposure']),2)==122880.0, data
           PY
