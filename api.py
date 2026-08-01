@@ -36,6 +36,7 @@ from ash08.config import (
     TRUSTED_ORIGINS,
     public_config,
 )
+from ash08.chitty_adopted import ChittyAdoptedStore
 from ash08.paper_engine import PaperEngine
 from ash08.scanner import StockMetrics, demo_metrics, run_scan
 from ash08.supabase_store import SupabaseStore
@@ -50,6 +51,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 _STORE = SupabaseStore(data_dir=str(DATA_DIR))
 _ENGINE = PaperEngine(data_dir=str(DATA_DIR), book_value=BOOK_VALUE)
+_CHITTY = ChittyAdoptedStore(DATA_DIR / "chitty_adopted")
 _RATE_LOCK = threading.Lock()
 _RATE_BUCKETS: Dict[str, deque[float]] = defaultdict(deque)
 _SESSION_LOCK = threading.Lock()
@@ -319,6 +321,8 @@ class Handler(BaseHTTPRequestHandler):
                 })
             if path == "/api/config":
                 return self._send_json(200, {"ok": True, "config": public_config()})
+            if path == "/api/chitty/adopted":
+                return self._send_json(200, _CHITTY.status())
             if path == "/api/paper/book":
                 return self._send_json(200, {"ok": True, **_ENGINE.book_payload(), "provider": provider_status()})
             if path == "/api/scan/latest":
@@ -342,6 +346,24 @@ class Handler(BaseHTTPRequestHandler):
             if not self._authorize_mutation():
                 raise ApiError(401, "UNAUTHORIZED", "Mutation authorization failed")
             body = self._read_json()
+            if path == "/api/chitty/source/register":
+                try:
+                    source = _CHITTY.register_source(body)
+                except ValueError as exc:
+                    raise ApiError(422, "CHITTY_SOURCE_INVALID", str(exc)) from exc
+                return self._send_json(200, {"ok": True, "source": source, "decision_impact": False})
+            if path == "/api/chitty/telemetry/compute":
+                try:
+                    snapshot = _CHITTY.compute_and_save(body)
+                except ValueError as exc:
+                    raise ApiError(422, "CHITTY_TELEMETRY_INVALID", str(exc)) from exc
+                return self._send_json(200, {"ok": True, "snapshot": snapshot, "decision_impact": False})
+            if path == "/api/chitty/audit/record":
+                try:
+                    event = _CHITTY.record_audit(body)
+                except ValueError as exc:
+                    raise ApiError(422, "CHITTY_AUDIT_INVALID", str(exc)) from exc
+                return self._send_json(200, {"ok": True, "event": event, "decision_impact": False})
             if path in {"/api/pnl/tick", "/api/live/refresh"}:
                 symbols = [position["symbol"] for position in _ENGINE.open_positions()]
                 snapshot = quote_snapshot(symbols)
