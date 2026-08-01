@@ -1,18 +1,36 @@
-"""ASH08 Scanner — locked gates SELECT / WATCH / REJECT."""
+"""Strict ASH08 scanner: missing mandatory evidence is UNKNOWN, never a pass."""
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
-import logging
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
-LOG = logging.getLogger("ash08.scanner")
-ADV20_MIN, TURNOVER_CR_MIN, STALE_MAX_DAYS = 200_000, 5.0, 7
-MOM_MIN, SCORE_SELECT, SCORE_WATCH, CORR_MAX = 0.0, 70.0, 55.0, 0.85
-MOM_WEIGHT, QUAL_WEIGHT = 0.65, 0.35
+from .config import (
+    ADV20_MIN,
+    CORR_MAX,
+    MIN_CONFIDENCE,
+    MOM_MIN,
+    MOM_WEIGHT,
+    PARAMETER_SET_ID,
+    QUAL_WEIGHT,
+    SCORE_SELECT,
+    SCORE_WATCH,
+    STALE_MAX_DAYS,
+    TURNOVER_CR_MIN,
+)
+
+REQUIRED_FIELDS = (
+    "adv20",
+    "turnover_cr_5d",
+    "stale_days",
+    "mom_6m",
+    "quality_score",
+    "max_corr_vs_book",
+)
 
 
 @dataclass
@@ -26,12 +44,16 @@ class StockMetrics:
     max_corr_vs_book: Optional[float] = None
     segment: str = ""
     ltp: Optional[float] = None
+    instrument_key: str = ""
+    feature_asof: str = ""
+    feature_source: str = ""
 
 
 @dataclass
 class ParamHit:
     param_id: str
     passed: bool
+    observed: bool
     detail: str
 
 
@@ -39,9 +61,12 @@ class ParamHit:
 class ScanRow:
     symbol: str
     decision: str
-    score: float
+    score: Optional[float]
+    confidence: float
+    coverage: float
     segment: str = ""
     ltp: Optional[float] = None
+    instrument_key: str = ""
     reason: str = ""
     hits: List[ParamHit] = field(default_factory=list)
     hard_pass: bool = False
@@ -58,8 +83,11 @@ class ScanSnapshot:
     select_count: int
     watch_count: int
     reject_count: int
+    unknown_count: int
     rows: List[Dict[str, Any]] = field(default_factory=list)
     notes: List[str] = field(default_factory=list)
+    parameter_set_id: str = PARAMETER_SET_ID
+    formula_hash: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -69,97 +97,139 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def mom_return_to_score(m: float) -> float:
-    return max(0.0, min(100.0, 50.0 + m * 200.0))
+def mom_return_to_score(value: float) -> float:
+    return max(0.0, min(100.0, 50.0 + float(value) * 200.0))
 
 
-def compute_final_score(mom_6m, quality_score):
-    mom_s = 50.0 if mom_6m is None else mom_return_to_score(mom_6m)
-    qual = 50.0 if quality_score is None else max(0.0, min(100.0, float(quality_score)))
-    return round(MOM_WEIGHT * mom_s + QUAL_WEIGHT * qual, 2)
+def compute_final_score(mom_6m: Optional[float], quality_score: Optional[float]) -> Optional[float]:
+    if mom_6m is None or quality_score is None:
+        return None
+    momentum = mom_return_to_score(float(mom_6m))
+    quality = max(0.0, min(100.0, float(quality_score)))
+    return round(MOM_WEIGHT * momentum + QUAL_WEIGHT * quality, 2)
 
 
-def evaluate_stock(m: StockMetrics) -> ScanRow:
-    hits: List[ParamHit] = []
-    adv_ok = True if m.adv20 is None else m.adv20 >= ADV20_MIN
-    hits.append(ParamHit("P-ADV20", adv_ok, f"adv20={m.adv20}"))
-    t_ok = True if m.turnover_cr_5d is None else m.turnover_cr_5d >= TURNOVER_CR_MIN
-    hits.append(ParamHit("P-TURNOVER", t_ok, f"to={m.turnover_cr_5d}"))
-    s_ok = True if m.stale_days is None else m.stale_days <= STALE_MAX_DAYS
-    hits.append(ParamHit("P-STALE", s_ok, f"stale={m.stale_days}"))
-    mom_ok = True if m.mom_6m is None else m.mom_6m > MOM_MIN
-    hits.append(ParamHit("P-MOM", mom_ok, f"mom={m.mom_6m}"))
-    c_ok = True if m.max_corr_vs_book is None else m.max_corr_vs_book <= CORR_MAX
-    hits.append(ParamHit("P-CORR", c_ok, f"corr={m.max_corr_vs_book}"))
-    hard = adv_ok and t_ok and s_ok and mom_ok and c_ok
-    score = compute_final_score(m.mom_6m, m.quality_score)
-    hits.append(ParamHit("P-SCORE", True, f"score={score}"))
-    if hard and score >= SCORE_SELECT:
-        decision, reason = "SELECT", f"score {score} >= {SCORE_SELECT}"
-    elif hard and score >= SCORE_WATCH:
-        decision, reason = "WATCH", f"score {score} in watch band"
+def _hit(param_id: str, value: Optional[float], predicate, detail: str) -> ParamHit:
+    observed = value is not None
+    passed = bool(observed and predicate(float(value)))
+    return ParamHit(param_id, passed, observed, detail)
+
+
+def evaluate_stock(metrics: StockMetrics, require_metrics: bool = True) -> ScanRow:
+    hits = [
+        _hit("P-ADV20", metrics.adv20, lambda x: x >= ADV20_MIN, f"adv20={metrics.adv20}; min={ADV20_MIN}"),
+        _hit("P-TURNOVER", metrics.turnover_cr_5d, lambda x: x >= TURNOVER_CR_MIN, f"turnover_cr_5d={metrics.turnover_cr_5d}; min={TURNOVER_CR_MIN}"),
+        _hit("P-STALE", metrics.stale_days, lambda x: x <= STALE_MAX_DAYS, f"stale_days={metrics.stale_days}; max={STALE_MAX_DAYS}"),
+        _hit("P-MOM", metrics.mom_6m, lambda x: x > MOM_MIN, f"mom_6m={metrics.mom_6m}; min>{MOM_MIN}"),
+        _hit("P-CORR", metrics.max_corr_vs_book, lambda x: x <= CORR_MAX, f"max_corr={metrics.max_corr_vs_book}; max={CORR_MAX}"),
+    ]
+    observed_count = sum(getattr(metrics, name) is not None for name in REQUIRED_FIELDS)
+    coverage = round(observed_count / len(REQUIRED_FIELDS), 4)
+    confidence = coverage
+    score = compute_final_score(metrics.mom_6m, metrics.quality_score)
+    mandatory_complete = observed_count == len(REQUIRED_FIELDS)
+    hard_pass = all(hit.passed for hit in hits)
+
+    if require_metrics and not mandatory_complete:
+        decision = "UNKNOWN"
+        reason = f"missing mandatory evidence; coverage={coverage:.0%}"
+    elif score is None:
+        decision = "UNKNOWN"
+        reason = "momentum or quality score unavailable"
+    elif not hard_pass:
+        decision = "REJECT"
+        failed = ",".join(hit.param_id for hit in hits if not hit.passed)
+        reason = f"hard gate failed: {failed}"
     else:
-        decision, reason = "REJECT", "hard fail or low score"
+        effective_score = score * confidence
+        if confidence < MIN_CONFIDENCE:
+            decision = "UNKNOWN"
+            reason = f"confidence {confidence:.2f} below {MIN_CONFIDENCE:.2f}"
+        elif effective_score >= SCORE_SELECT:
+            decision = "SELECT"
+            reason = f"effective score {effective_score:.2f} >= {SCORE_SELECT:.2f}"
+        elif effective_score >= SCORE_WATCH:
+            decision = "WATCH"
+            reason = f"effective score {effective_score:.2f} in {SCORE_WATCH:.2f}-{SCORE_SELECT:.2f} band"
+        else:
+            decision = "REJECT"
+            reason = f"effective score {effective_score:.2f} < {SCORE_WATCH:.2f}"
+
+    score_observed = score is not None
+    score_passed = bool(score_observed and score >= SCORE_WATCH)
+    hits.append(ParamHit("P-SCORE-WATCH", score_passed, score_observed, f"score={score}; min={SCORE_WATCH}"))
+    hits.append(ParamHit("P-COVERAGE", mandatory_complete, True, f"coverage={coverage:.0%}; required=100%"))
+
     return ScanRow(
-        symbol=m.symbol,
+        symbol=metrics.symbol,
         decision=decision,
         score=score,
-        segment=m.segment,
-        ltp=m.ltp,
+        confidence=confidence,
+        coverage=coverage,
+        segment=metrics.segment,
+        ltp=metrics.ltp,
+        instrument_key=metrics.instrument_key,
         reason=reason,
         hits=hits,
-        hard_pass=hard,
+        hard_pass=hard_pass and mandatory_complete,
     )
 
 
-def run_scan(
-    metrics: Sequence[StockMetrics],
-    universe_bucket: str = "core",
-    require_metrics: bool = False,
-) -> ScanSnapshot:
-    rows = [evaluate_stock(m) for m in metrics]
-    rows_sorted = sorted(
-        rows,
-        key=lambda r: (
-            0 if r.decision == "SELECT" else 1 if r.decision == "WATCH" else 2,
-            -r.score,
-            r.symbol,
-        ),
-    )
+def formula_hash() -> str:
+    payload = {
+        "parameter_set_id": PARAMETER_SET_ID,
+        "weights": [MOM_WEIGHT, QUAL_WEIGHT],
+        "thresholds": [ADV20_MIN, TURNOVER_CR_MIN, STALE_MAX_DAYS, MOM_MIN, CORR_MAX, SCORE_WATCH, SCORE_SELECT],
+        "required_fields": REQUIRED_FIELDS,
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:16]
+
+
+def run_scan(metrics: Sequence[StockMetrics], universe_bucket: str = "core", require_metrics: bool = True) -> ScanSnapshot:
+    rows = [evaluate_stock(item, require_metrics=require_metrics) for item in metrics]
+    rank = {"SELECT": 0, "WATCH": 1, "REJECT": 2, "UNKNOWN": 3}
+    rows.sort(key=lambda row: (rank.get(row.decision, 9), -(row.score or -1), row.symbol))
     return ScanSnapshot(
         asof=_utc_now_iso(),
         universe_bucket=universe_bucket,
-        universe_count=len(rows_sorted),
-        select_count=sum(1 for r in rows_sorted if r.decision == "SELECT"),
-        watch_count=sum(1 for r in rows_sorted if r.decision == "WATCH"),
-        reject_count=sum(1 for r in rows_sorted if r.decision == "REJECT"),
-        rows=[r.to_dict() for r in rows_sorted],
-        notes=[f"SCORE_SELECT={SCORE_SELECT}", f"SCORE_WATCH={SCORE_WATCH}"],
+        universe_count=len(rows),
+        select_count=sum(row.decision == "SELECT" for row in rows),
+        watch_count=sum(row.decision == "WATCH" for row in rows),
+        reject_count=sum(row.decision == "REJECT" for row in rows),
+        unknown_count=sum(row.decision == "UNKNOWN" for row in rows),
+        rows=[row.to_dict() for row in rows],
+        notes=[
+            "mandatory metrics fail closed",
+            f"SELECT>={SCORE_SELECT}",
+            f"WATCH>={SCORE_WATCH}",
+            f"parameter_set={PARAMETER_SET_ID}",
+        ],
+        formula_hash=formula_hash(),
     )
 
 
-def demo_metrics():
+def demo_metrics() -> List[StockMetrics]:
     return [
-        StockMetrics("TCS", 800_000, 25, 1, 0.18, 75, 0.4, "IT", 3840),
-        StockMetrics("HDFCBANK", 1_200_000, 40, 0, 0.12, 70, 0.35, "Finance", 1690),
-        StockMetrics("ITC", 700_000, 15, 2, -0.05, 55, 0.3, "FMCG", 450),
-        StockMetrics("THINNAME", 50_000, 1, 1, 0.2, 80, 0.2, "", 100),
+        StockMetrics("TCS", 800_000, 25, 1, 0.18, 67, 0.4, "IT", 3840, "NSE_EQ|TCS", feature_source="demo"),
+        StockMetrics("HDFCBANK", 1_200_000, 40, 0, 0.12, 70, 0.35, "Finance", 1690, "NSE_EQ|HDFCBANK", feature_source="demo"),
+        StockMetrics("INCOMPLETE", None, None, None, 0.2, 80, None, "", 100, "NSE_EQ|INCOMPLETE", feature_source="demo"),
     ]
 
 
-def main():
-    logging.basicConfig(level=logging.INFO)
-    p = argparse.ArgumentParser()
-    p.add_argument("--demo", action="store_true")
-    p.add_argument("--data-dir", default="ash08_data")
-    args = p.parse_args()
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--demo", action="store_true")
+    parser.add_argument("--data-dir", default="ash08_data")
+    args = parser.parse_args()
     if not args.demo:
-        p.error("use --demo")
-    snap = run_scan(demo_metrics(), universe_bucket="demo")
-    Path(args.data_dir).mkdir(parents=True, exist_ok=True)
-    Path(args.data_dir, "scan_latest.json").write_text(json.dumps(snap.to_dict(), indent=2))
-    print(json.dumps({"select": snap.select_count, "watch": snap.watch_count, "reject": snap.reject_count}, indent=2))
+        parser.error("use --demo")
+    snapshot = run_scan(demo_metrics(), universe_bucket="demo", require_metrics=True)
+    path = Path(args.data_dir)
+    path.mkdir(parents=True, exist_ok=True)
+    (path / "scan_latest.json").write_text(json.dumps(snapshot.to_dict(), indent=2), encoding="utf-8")
+    print(json.dumps(snapshot.to_dict(), indent=2))
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
