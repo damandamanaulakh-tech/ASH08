@@ -1,137 +1,260 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>ASH08 Reviewed 50L Desk</title>
-  <link rel="stylesheet" href="/styles.css">
-  <script defer src="/app.js"></script>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>ASH08 Sourceborn Desk</title>
+<style>
+:root{--bg:#070b14;--panel:#0d1424;--panel2:#121c30;--line:#1e2a42;--text:#e8eefc;--muted:#8b9bb8;--accent:#3b82f6;--green:#22c55e;--red:#ef4444;--chip:#182338}
+*{box-sizing:border-box}body{margin:0;font-family:Inter,Segoe UI,system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:13px}
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px;border-bottom:1px solid var(--line);background:#0a101c;position:sticky;top:0;z-index:40;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:10px}.logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#2563eb,#06b6d4);display:grid;place-items:center;font-weight:800;font-size:12px}
+.brand h1{margin:0;font-size:15px}.brand p{margin:0;color:var(--muted);font-size:11px}
+.pill{padding:5px 10px;border-radius:999px;border:1px solid var(--line);background:var(--chip);color:var(--muted);font-size:11px;font-weight:600}
+.pill.on{background:#052e16;border-color:#166534;color:#86efac}.pill.live{background:#172554;border-color:#1d4ed8;color:#93c5fd}
+.btn{border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:8px;padding:7px 12px;font-size:12px;cursor:pointer;font-weight:600}
+.btn.primary{background:var(--accent);border-color:#2563eb}.btn.green{background:#16a34a;border-color:#15803d;color:#fff}
+.layout{display:grid;grid-template-columns:200px 1fr;min-height:calc(100vh - 52px)}
+nav{border-right:1px solid var(--line);background:#0a101c;padding:12px 8px;position:sticky;top:52px;height:calc(100vh - 52px);overflow:auto}
+nav .sec{font-size:10px;color:var(--muted);padding:10px 10px 4px;text-transform:uppercase}
+nav button{width:100%;text-align:left;background:transparent;border:0;color:var(--muted);padding:10px 12px;border-radius:8px;margin-bottom:2px;cursor:pointer;font-size:13px}
+nav button.active,nav button:hover{background:var(--panel2);color:var(--text)}
+main{padding:14px 16px 40px;overflow:auto}.view{display:none}.view.active{display:block}
+.idx-row{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:12px}
+.idx{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px}.idx .lab{color:var(--muted);font-size:11px}.idx .val{font-size:18px;font-weight:700}.up{color:var(--green)}.dn{color:var(--red)}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}.grid2{display:grid;grid-template-columns:1.2fr .8fr;gap:12px}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}
+.kpi,.panel,.card{background:var(--panel);border:1px solid var(--line);border-radius:12px}
+.kpi{padding:12px}.kpi span{display:block;color:var(--muted);font-size:11px}.kpi strong{font-size:18px}
+.panel{overflow:hidden;margin-bottom:12px}
+.panel-h{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line);background:var(--panel2)}.panel-h h3{margin:0;font-size:13px}
+.card{padding:12px}.card h4{margin:0 0 8px;font-size:13px}
+table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left}th{color:var(--muted);background:#0e1628;font-size:11px}
+.tag{display:inline-block;padding:2px 7px;border-radius:999px;font-size:10px;font-weight:700}
+.select{background:#052e16;color:#86efac}.watch{background:#422006;color:#fcd34d}.reject{background:#450a0a;color:#fca5a5}.open{background:#052e16;color:#86efac}
+.muted{color:var(--muted)}.row{display:flex;justify-content:space-between;margin:6px 0;font-size:12px}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.form-grid label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px}
+.form-grid input{width:100%;background:#0b1220;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:9px;font-size:12px}
+.btn-row{display:flex;gap:8px;margin-top:12px}.buy,.ghost{flex:1;border:0;border-radius:8px;padding:11px;font-weight:700;cursor:pointer;font-size:12px}.buy{background:#16a34a;color:#fff}.ghost{background:#1f2937;color:var(--text)}
+.piano{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:12px}
+.note{background:#0b1220;border:1px solid var(--line);border-radius:12px;padding:12px;cursor:pointer;min-height:70px}.note:hover,.note.active{border-color:var(--accent);background:#172554}
+.note strong{display:block;margin-bottom:4px}.note em{color:var(--muted);font-style:normal;font-size:11px}
+.horizons{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.hz{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}.hz strong{display:block;margin-bottom:4px}.hz span{color:var(--muted);font-size:11px}
+.exp{height:10px;border-radius:99px;background:#1f2937;overflow:hidden;margin-top:8px}.exp>i{display:block;height:100%;background:linear-gradient(90deg,#22c55e,#eab308,#ef4444)}
+.footer-bar{position:sticky;bottom:0;background:#0a101c;border-top:1px solid var(--line);padding:6px 14px;font-size:11px;color:var(--muted);display:flex;gap:16px;flex-wrap:wrap}
+#buy-msg{margin-top:8px;font-size:12px;min-height:16px}
+@media(max-width:1100px){.idx-row,.grid3,.horizons{grid-template-columns:1fr 1fr}.layout{grid-template-columns:1fr}nav{position:relative;top:0;height:auto;display:flex;flex-wrap:wrap}nav button{width:auto}}
+</style>
 </head>
 <body>
-<header class="topbar">
-  <div>
-    <h1>ASH08 Sourceborn</h1>
-    <p>Reviewed ₹50 lakh paper portfolio baseline</p>
-  </div>
-  <div class="status-row">
-    <span class="badge good">PAPER</span>
-    <span class="badge" id="market-status">MARKET UNKNOWN</span>
-    <span class="badge" id="auth-status">AUTH CHECK</span>
-    <span class="badge" id="governor-status">GOV UNVERIFIED</span>
-  </div>
-</header>
-
+<div class="top">
+<div class="brand"><div class="logo">A8</div><div><h1>ASH08 Sourceborn</h1><p>Paper desk · P&L on book</p></div></div>
+<div style="display:flex;gap:8px;flex-wrap:wrap">
+<span class="pill on">PAPER</span>
+<span class="pill live">MARKET</span>
+<span class="pill" id="upx-pill">Upstox</span>
+<span class="pill" id="gov-pill">Gov L0</span>
+</div>
+<div style="display:flex;gap:8px">
+<button class="btn" onclick="runScan()">Run Scan</button>
+<button class="btn green" onclick="runAuto()">Auto-buy SELECT</button>
+</div>
+</div>
+<div class="layout">
+<nav>
+<div class="sec">Core</div>
+<button class="active" data-view="home">Dashboard</button>
+<button data-view="scanner">Scanner</button>
+<button data-view="piano">Parameter Piano</button>
+<button data-view="detail">Stock Detail</button>
+<div class="sec">Trade</div>
+<button data-view="ticket">Paper Ticket</button>
+<button data-view="positions">Trade Book</button>
+<button data-view="horizons">4 Horizons</button>
+<button data-view="watchlist">Watchlist</button>
+<div class="sec">Risk</div>
+<button data-view="governor">Risk Governor</button>
+<button data-view="universe">Universe</button>
+<button data-view="segments">Segments</button>
+</nav>
 <main>
-  <section class="notice" id="notice" role="status">Loading reviewed baseline…</section>
-
-  <section class="grid metrics">
-    <article><label>Approved book</label><strong id="book-value">—</strong><small>Single runtime configuration</small></article>
-    <article><label>Cash</label><strong id="cash-value">—</strong><small id="cash-note">—</small></article>
-    <article><label>Gross exposure</label><strong id="gross-value">—</strong><small id="gross-note">—</small></article>
-    <article><label>Open positions</label><strong id="open-value">—</strong><small id="open-note">—</small></article>
-    <article><label>Net P&amp;L</label><strong id="pnl-value">—</strong><small>Costs included</small></article>
-    <article><label>Scanner policy</label><strong id="scanner-value">—</strong><small>Missing evidence → UNKNOWN</small></article>
-  </section>
-
-  <section class="grid two">
-    <article class="panel">
-      <header><h2>System truth</h2><button id="refresh-all">Refresh</button></header>
-      <dl class="facts">
-        <div><dt>Release</dt><dd id="release">—</dd></div>
-        <div><dt>Upstox profile</dt><dd id="profile-state">—</dd></div>
-        <div><dt>Quote capability</dt><dd id="quote-state">—</dd></div>
-        <div><dt>Universe Core</dt><dd id="core-state">—</dd></div>
-        <div><dt>Last scan</dt><dd id="scan-asof">—</dd></div>
-        <div><dt>Data source</dt><dd id="source-state">—</dd></div>
-      </dl>
-      <div class="actions">
-        <button id="refresh-universe">Refresh instruments</button>
-        <button id="run-scan" class="primary">Run strict scan</button>
-        <button id="refresh-pnl">Fetch live marks</button>
-        <a href="/chitty-adopted.html">Open adopted Chitty telemetry</a>
-      </div>
-      <p class="hint">Core remains BLOCKED until real liquidity evidence is present. The app no longer passes missing metrics or fabricates prices.</p>
-    </article>
-
-    <article class="panel">
-      <header><h2>Mutation authorization</h2></header>
-      <label for="api-token">Optional bearer token</label>
-      <input id="api-token" type="password" autocomplete="off" placeholder="Only required when ASH08_API_TOKEN is configured">
-      <div class="actions"><button id="save-token">Save locally</button><button id="clear-token">Clear</button></div>
-      <p class="hint">Without a configured bearer token, mutations use a same-origin CSRF session. Tokens remain in this browser only.</p>
-    </article>
-  </section>
-
-  <section class="panel">
-    <header>
-      <div><h2>Strict scanner</h2><p>SELECT ≥ 67 · WATCH 60–66.99 · incomplete mandatory evidence = UNKNOWN</p></div>
-      <button id="auto-buy" class="danger">Auto-buy SELECT</button>
-    </header>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Symbol</th><th>Decision</th><th>Score</th><th>Coverage</th><th>Reason</th></tr></thead>
-        <tbody id="scan-table"></tbody>
-      </table>
-    </div>
-  </section>
-
-  <section class="grid two">
-    <article class="panel">
-      <header><h2>Paper buy ticket</h2></header>
-      <form id="buy-form">
-        <div class="form-grid">
-          <label>Symbol<input name="symbol" required maxlength="40" placeholder="TCS"></label>
-          <label>Requested quantity<input name="qty" required type="number" min="1" value="50"></label>
-          <label>Price<input name="price" type="number" min="0" step="0.05" placeholder="Blank uses Upstox"></label>
-          <label>Stop<input name="stop" type="number" min="0" step="0.05" placeholder="Default -3%"></label>
-          <label>Target<input name="target" type="number" min="0" step="0.05" placeholder="Default +6%"></label>
-          <label>Hold sessions<input name="hold_sessions" type="number" min="1" value="15"></label>
-        </div>
-        <button class="primary" type="submit">Risk-size and buy</button>
-      </form>
-      <p class="hint">Requested quantity is intent. Final quantity is constrained by name, gross, cash, governor, lot and maximum-position rules.</p>
-    </article>
-
-    <article class="panel">
-      <header><h2>Governor evidence</h2></header>
-      <form id="governor-form">
-        <label class="check"><input type="checkbox" name="damage"> Damage</label>
-        <label class="check"><input type="checkbox" name="q10"> Q10 confirmation</label>
-        <label class="check"><input type="checkbox" name="sell"> Sell confirmation</label>
-        <label class="check"><input type="checkbox" name="any_fii"> Any FII confirmation</label>
-        <label class="check"><input type="checkbox" name="evidence_complete"> Evidence complete</label>
-        <label class="check"><input type="checkbox" name="evidence_fresh"> Evidence fresh</label>
-        <button type="submit">Evaluate governor</button>
-      </form>
-      <dl class="facts compact">
-        <div><dt>Level</dt><dd id="gov-level">—</dd></div>
-        <div><dt>Target exposure</dt><dd id="gov-target">—</dd></div>
-        <div><dt>Required cut</dt><dd id="gov-cut">—</dd></div>
-      </dl>
-    </article>
-  </section>
-
-  <section class="panel">
-    <header><h2>Open positions</h2></header>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Symbol</th><th>Qty</th><th>Entry</th><th>Mark</th><th>Net P&amp;L</th><th>Stop</th><th>Target</th><th>Mark status</th><th>Action</th></tr></thead>
-        <tbody id="positions-table"></tbody>
-      </table>
-    </div>
-  </section>
-
-  <section class="grid two">
-    <article class="panel">
-      <header><h2>Order history</h2></header>
-      <div class="table-wrap"><table><thead><tr><th>Time</th><th>Symbol</th><th>Requested</th><th>Filled</th><th>Status</th><th>Reason</th></tr></thead><tbody id="orders-table"></tbody></table></div>
-    </article>
-    <article class="panel">
-      <header><h2>Closed positions</h2></header>
-      <div class="table-wrap"><table><thead><tr><th>Symbol</th><th>Qty</th><th>Entry</th><th>Exit</th><th>Net P&amp;L</th><th>Reason</th></tr></thead><tbody id="closed-table"></tbody></table></div>
-    </article>
-  </section>
-</main>
-<footer>ASH08 reviewed baseline · no static market numbers · no synthetic marks · no missing-data passes</footer>
+<section class="view active" id="view-home">
+<div class="idx-row">
+<div class="idx"><div class="lab">NIFTY 50</div><div class="val">—</div></div>
+<div class="idx"><div class="lab">SENSEX</div><div class="val">—</div></div>
+<div class="idx"><div class="lab">BANK NIFTY</div><div class="val">—</div></div>
+<div class="idx"><div class="lab">INDIA VIX</div><div class="val">—</div></div>
+<div class="idx"><div class="lab">Open / Unrealized</div><div class="val" id="kpi-open">0</div><div class="muted" id="kpi-upnl">P&L —</div></div>
+</div>
+<div class="grid3">
+<div class="panel"><div class="panel-h"><h3>SELECT picks</h3><button class="btn" onclick="showView('scanner')">Scanner</button></div>
+<table><thead><tr><th>Symbol</th><th>Score</th><th></th></tr></thead><tbody id="home-picks"><tr><td colspan="3" class="muted" style="text-align:center;padding:16px">Loading…</td></tr></tbody></table></div>
+<div class="panel"><div class="panel-h"><h3>Open book</h3><button class="btn" onclick="showView('positions')">Trade book</button></div>
+<table><thead><tr><th>Symbol</th><th>LTP</th><th>P&L</th></tr></thead><tbody id="home-pos"><tr><td colspan="3" class="muted" style="text-align:center;padding:16px">No opens</td></tr></tbody></table></div>
+<div class="card"><h4>Plan</h4>
+<div class="row"><span class="muted">Stop / Target / Hold</span><strong>-3% / +6% / 15d</strong></div>
+<div class="row"><span class="muted">Auto source</span><strong>SELECT ≥ 70</strong></div>
+<div class="row"><span class="muted">LTP source</span><strong id="home-ltpsrc">—</strong></div>
+</div>
+</div>
+</section>
+<section class="view" id="view-scanner">
+<div class="kpis">
+<div class="kpi"><span>Core</span><strong id="kpi-core">—</strong></div>
+<div class="kpi"><span>SELECT</span><strong id="kpi-passed">—</strong></div>
+<div class="kpi"><span>Open</span><strong id="kpi-open2">0</strong></div>
+<div class="kpi"><span>Governor</span><strong id="kpi-gov">L0</strong></div>
+</div>
+<div class="panel"><div class="panel-h"><h3>Scanner</h3>
+<div style="display:flex;gap:8px"><button class="btn primary" onclick="runScan()">Run scan</button><button class="btn" onclick="runDemo()">Seed</button></div></div>
+<table><thead><tr><th>#</th><th>Symbol</th><th>Decision</th><th>Score</th><th>Reason</th><th></th></tr></thead>
+<tbody id="scan-body"><tr><td colspan="6" class="muted" style="text-align:center;padding:20px">Loading…</td></tr></tbody></table></div>
+</section>
+<section class="view" id="view-piano">
+<div class="panel"><div class="panel-h"><h3>Parameter Piano</h3></div>
+<div class="piano">
+<div class="note active" onclick="selectNote(this,'adv')"><strong>P-ADV20</strong><em>≥ 2L</em></div>
+<div class="note" onclick="selectNote(this,'turn')"><strong>P-TURNOVER</strong><em>≥ ₹5 Cr</em></div>
+<div class="note" onclick="selectNote(this,'stale')"><strong>P-STALE</strong><em>≤ 7d</em></div>
+<div class="note" onclick="selectNote(this,'mom')"><strong>P-MOM</strong><em>6M > 0</em></div>
+<div class="note" onclick="selectNote(this,'score')"><strong>P-SCORE</strong><em>0.65/0.35</em></div>
+<div class="note" onclick="selectNote(this,'corr')"><strong>P-CORR</strong><em>≤ 0.85</em></div>
+<div class="note" onclick="selectNote(this,'select')"><strong>P-SELECT</strong><em>≥ 70 auto-buy</em></div>
+<div class="note" onclick="selectNote(this,'gov')"><strong>P-GOV</strong><em>L0–L4</em></div>
+</div></div>
+<div class="card"><h4 id="noteTitle">P-ADV20</h4><p class="muted" id="noteBody">ADV20 ≥ 200,000</p></div>
+</section>
+<section class="view" id="view-detail">
+<div class="grid2">
+<div class="card"><h4 id="det-sym">Symbol</h4>
+<div class="row"><span class="muted">Decision</span><span class="tag watch" id="det-dec">—</span></div>
+<div class="row"><span class="muted">Score</span><strong id="det-score">—</strong></div>
+<p class="muted" id="det-reason">Select from Scanner</p></div>
+<div class="card"><h4>Hits</h4><div id="det-hits">—</div>
+<div class="btn-row"><button class="buy" onclick="showView('ticket')">Paper ticket</button><button class="ghost" onclick="showView('scanner')">Back</button></div></div>
+</div></section>
+<section class="view" id="view-ticket">
+<div class="card" style="max-width:560px"><h4>Paper Ticket</h4>
+<p class="muted">SELECT also auto-buys. Blank = stop -3% / target +6%.</p>
+<div class="form-grid">
+<div><label>Symbol</label><input id="tk-sym" placeholder="TCS"/></div>
+<div><label>Qty</label><input id="tk-qty" type="number" value="50"/></div>
+<div><label>Price</label><input id="tk-price" type="number" step="0.05" placeholder="auto"/></div>
+<div><label>Stop</label><input id="tk-stop" type="number" step="0.05" placeholder="auto -3%"/></div>
+<div><label>Target</label><input id="tk-target" type="number" step="0.05" placeholder="auto +6%"/></div>
+</div>
+<div class="btn-row"><button class="buy" id="btn-buy" onclick="paperBuy()">PAPER BUY</button><button class="ghost" onclick="showView('positions')">Trade Book</button></div>
+<div id="buy-msg" class="muted"></div></div>
+</section>
+<section class="view" id="view-positions">
+<div class="grid3" style="margin-bottom:12px">
+<div class="card"><h4>Plan</h4>
+<div class="row"><span class="muted">Stop</span><strong id="plan-stop">-3%</strong></div>
+<div class="row"><span class="muted">Target</span><strong id="plan-target">+6%</strong></div>
+<div class="row"><span class="muted">Hold</span><strong id="plan-hold">15d</strong></div></div>
+<div class="card"><h4>P&L</h4>
+<div class="row"><span class="muted">Unrealized</span><strong id="plan-upnl">—</strong></div>
+<div class="row"><span class="muted">Realized</span><strong id="plan-rpnl">—</strong></div>
+<div class="row"><span class="muted">LTP source</span><strong id="plan-ltpsrc">—</strong></div></div>
+<div class="card"><h4>Live</h4>
+<div class="row"><span class="muted">Open</span><strong id="plan-open">0</strong></div>
+<div class="row"><span class="muted">Max open</span><strong>10</strong></div>
+<div class="row"><span class="muted">Source</span><strong>auto_select</strong></div></div>
+</div>
+<p class="muted" style="margin:0 0 10px;font-size:12px"><b>Open</b> = live holdings · <b>Order history FILLED</b> = buy tickets only</p>
+<div class="panel"><div class="panel-h"><h3>Open positions</h3>
+<div style="display:flex;gap:8px"><button class="btn" onclick="loadBook()">Refresh</button><button class="btn green" onclick="runAuto()">Auto-buy SELECTs</button></div></div>
+<table><thead><tr><th>Symbol</th><th>Qty</th><th>Entry</th><th>LTP</th><th>P&L</th><th>Stop</th><th>Target</th><th>Left</th><th>Status</th></tr></thead>
+<tbody id="pos-body"><tr><td colspan="9" class="muted" style="text-align:center;padding:18px">No open positions</td></tr></tbody></table></div>
+<div class="panel"><div class="panel-h"><h3>Order history</h3><span class="muted" style="font-size:11px">FILLED = completed buy ticket</span></div>
+<table><thead><tr><th>Time</th><th>Symbol</th><th>Side</th><th>Qty</th><th>Fill</th><th>Status</th></tr></thead>
+<tbody id="ord-body"><tr><td colspan="6" class="muted" style="text-align:center;padding:18px">No orders</td></tr></tbody></table></div>
+<div class="panel"><div class="panel-h"><h3>Closed / exits</h3></div>
+<table><thead><tr><th>Symbol</th><th>Entry</th><th>Exit</th><th>P&L</th><th>Reason</th></tr></thead>
+<tbody id="closed-body"><tr><td colspan="5" class="muted" style="text-align:center;padding:18px">No closed</td></tr></tbody></table></div>
+</section>
+<section class="view" id="view-horizons">
+<div class="horizons">
+<div class="hz"><strong>Intraday</strong><span>0–1 day</span></div>
+<div class="hz"><strong>Swing</strong><span>2–10 days</span></div>
+<div class="hz"><strong>Positional</strong><span>2–8 weeks</span></div>
+<div class="hz"><strong>Portfolio</strong><span>3M+</span></div>
+</div>
+</section>
+<section class="view" id="view-watchlist">
+<div class="panel"><div class="panel-h"><h3>Watchlist</h3></div>
+<table><thead><tr><th>Symbol</th><th>Decision</th><th>Score</th><th>Reason</th></tr></thead>
+<tbody id="watch-body"><tr><td colspan="4" class="muted" style="text-align:center;padding:18px">Loading…</td></tr></tbody></table></div>
+</section>
+<section class="view" id="view-governor">
+<div class="grid2">
+<div class="card"><h4>Live</h4><div class="row"><span class="muted">Level</span><strong id="gov-level">L0</strong></div>
+<div class="row"><span class="muted">Exposure</span><strong id="gov-exp">100%</strong></div>
+<div class="exp"><i id="gov-bar" style="width:100%"></i></div></div>
+<div class="card"><h4>Locked</h4><table><thead><tr><th>L</th><th>Condition</th><th>%</th></tr></thead>
+<tbody><tr><td>L0</td><td>No damage</td><td>100</td></tr><tr><td>L1</td><td>Damage</td><td>70</td></tr><tr><td>L2</td><td>+1 FII</td><td>50</td></tr><tr><td>L3</td><td>+≥2 FII</td><td>25</td></tr><tr><td>L4</td><td>Q10+sell</td><td>15</td></tr></tbody></table></div>
+</div></section>
+<section class="view" id="view-universe">
+<div class="grid3">
+<div class="card"><h4>Core</h4><div class="row"><span class="muted">Size</span><strong id="uni-core">—</strong></div></div>
+<div class="card"><h4>Discovery</h4><div class="row"><span class="muted">Cap</span><strong>≤5000</strong></div></div>
+<div class="card"><h4>Store</h4><div class="row"><span class="muted">Backend</span><strong>Local + Supabase</strong></div></div>
+</div></section>
+<section class="view" id="view-segments">
+<div class="grid3">
+<div class="card"><h4>IT</h4><p class="muted">INFY · TCS · HCLTECH</p></div>
+<div class="card"><h4>Finance</h4><p class="muted">HDFCBANK · ICICIBANK · SBIN</p></div>
+<div class="card"><h4>Energy</h4><p class="muted">RELIANCE · POWERGRID</p></div>
+<div class="card"><h4>Auto</h4><p class="muted">TATAMOTORS · MARUTI</p></div>
+<div class="card"><h4>Metals</h4><p class="muted">TATASTEEL · HINDALCO</p></div>
+<div class="card"><h4>Defence</h4><p class="muted">HAL · BEL · MTARTECH</p></div>
+</div></section>
+</main></div>
+<div class="footer-bar"><span>ASH08</span><span id="ft-core">Core —</span><span id="ft-open">Open 0</span><span>Open ≠ Order history</span></div>
+<script>
+function showView(id){document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));const v=document.getElementById('view-'+id);if(v)v.classList.add('active');const b=document.querySelector('nav button[data-view="'+id+'"]');if(b)b.classList.add('active');if(id==='positions'||id==='home')loadBook();if(id==='watchlist')loadWatch();}
+document.querySelectorAll('nav button').forEach(btn=>btn.addEventListener('click',()=>showView(btn.dataset.view)));
+const NOTE={adv:{t:'P-ADV20',b:'ADV20 ≥ 200,000'},turn:{t:'P-TURNOVER',b:'5D ≥ ₹5 Cr'},stale:{t:'P-STALE',b:'≤ 7 days'},mom:{t:'P-MOM',b:'6M > 0'},score:{t:'P-SCORE',b:'0.65×mom+0.35×qual'},corr:{t:'P-CORR',b:'≤ 0.85'},select:{t:'P-SELECT',b:'≥ 70 → auto paper buy'},gov:{t:'P-GOV',b:'L0–L4'}};
+function selectNote(el,id){document.querySelectorAll('.note').forEach(n=>n.classList.remove('active'));el.classList.add('active');document.getElementById('noteTitle').textContent=NOTE[id].t;document.getElementById('noteBody').textContent=NOTE[id].b;}
+function renderRows(rows,sc){const body=document.getElementById('scan-body');document.getElementById('kpi-passed').textContent=sc!=null?sc:'—';const picks=document.getElementById('home-picks');
+if(!rows||!rows.length){body.innerHTML='<tr><td colspan="6" class="muted" style="text-align:center;padding:20px">Empty — Seed</td></tr>';picks.innerHTML='<tr><td colspan="3" class="muted" style="text-align:center;padding:16px">No picks</td></tr>';return;}
+body.innerHTML=rows.slice(0,50).map((row,i)=>{const d=(row.decision||'').toUpperCase();const cls=d==='SELECT'?'select':d==='WATCH'?'watch':'reject';return '<tr><td class="muted">'+(i+1)+'</td><td><strong>'+row.symbol+'</strong></td><td><span class="tag '+cls+'">'+d+'</span></td><td>'+(row.score!=null?row.score:'')+'</td><td class="muted">'+(row.reason||'')+'</td><td><button class="btn" style="padding:4px 8px" onclick=\'openDetail('+JSON.stringify(row)+')\'>View</button></td></tr>';}).join('');
+const selects=rows.filter(r=>(r.decision||'').toUpperCase()==='SELECT').slice(0,8);
+if(!selects.length)picks.innerHTML='<tr><td colspan="3" class="muted" style="text-align:center;padding:16px">No SELECT</td></tr>';
+else picks.innerHTML=selects.map(r=>'<tr><td><strong>'+r.symbol+'</strong></td><td>'+r.score+'</td><td><button class="buy" style="padding:4px 8px;flex:none" onclick="ticket(\''+r.symbol+'\')">Buy</button></td></tr>').join('');}
+function ticket(sym){document.getElementById('tk-sym').value=sym;showView('ticket');}
+async function loadScan(){try{const r=await fetch('/api/scan/latest');const d=await r.json();renderRows(d.rows||[],d.select_count);}catch(e){}}
+async function loadWatch(){try{const r=await fetch('/api/scan/latest');const d=await r.json();const rows=(d.rows||[]).filter(x=>{const z=(x.decision||'').toUpperCase();return z==='SELECT'||z==='WATCH';}).slice(0,30);const body=document.getElementById('watch-body');if(!rows.length)body.innerHTML='<tr><td colspan="4" class="muted" style="text-align:center;padding:18px">Empty</td></tr>';else body.innerHTML=rows.map(row=>{const d=(row.decision||'').toUpperCase();const cls=d==='SELECT'?'select':'watch';return '<tr><td><strong>'+row.symbol+'</strong></td><td><span class="tag '+cls+'">'+d+'</span></td><td>'+row.score+'</td><td class="muted">'+(row.reason||'')+'</td></tr>';}).join('');}catch(e){}}
+async function runDemo(){try{const r=await fetch('/api/demo/run');const d=await r.json();if(d.ok){document.getElementById('kpi-core').textContent=d.core_count||'—';document.getElementById('uni-core').textContent=d.core_count||'—';document.getElementById('ft-core').textContent='Core '+(d.core_count||'—');await loadScan();await loadBook();}}catch(e){}}
+async function runScan(){try{const r=await fetch('/api/scan/run');const d=await r.json();if(d.ok){await loadScan();await loadBook();}else await runDemo();}catch(e){await runDemo();}}
+function openDetail(row){document.getElementById('det-sym').textContent=row.symbol||'';document.getElementById('det-dec').textContent=row.decision||'—';document.getElementById('det-score').textContent=row.score!=null?row.score:'—';document.getElementById('det-reason').textContent=row.reason||'';document.getElementById('det-hits').innerHTML=(row.hits||[]).map(h=>'<div class="row"><span>'+h.param_id+'</span><span class="tag '+(h.passed?'select':'reject')+'">'+(h.passed?'PASS':'FAIL')+'</span></div>').join('')||'—';document.getElementById('tk-sym').value=row.symbol||'';if(row.ltp)document.getElementById('tk-price').value=row.ltp;showView('detail');}
+async function paperBuy(){const msg=document.getElementById('buy-msg'),btn=document.getElementById('btn-buy');const symbol=(document.getElementById('tk-sym').value||'').trim().toUpperCase();const qty=document.getElementById('tk-qty').value||'50';const price=document.getElementById('tk-price').value||'';const stop=document.getElementById('tk-stop').value||'';const target=document.getElementById('tk-target').value||'';if(!symbol){msg.textContent='Enter symbol';msg.style.color='#fca5a5';return;}btn.disabled=true;msg.textContent='Placing…';try{const r=await fetch('/api/paper/buy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol,qty,price,stop,target})});const d=await r.json();if(d.ok){msg.textContent=d.message||'Filled';msg.style.color='#86efac';await loadBook();showView('positions');}else{msg.textContent=d.error||'Failed';msg.style.color='#fca5a5';}}catch(e){msg.textContent=String(e);msg.style.color='#fca5a5';}btn.disabled=false;}
+async function loadBook(){try{const r=await fetch('/api/paper/book');const d=await r.json();if(!d.ok)return;const oc=d.open_count!=null?d.open_count:0;['kpi-open','kpi-open2','plan-open'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=oc;});document.getElementById('ft-open').textContent='Open '+oc;
+const up=d.unrealized_pnl!=null?((d.unrealized_pnl>=0?'+':'')+d.unrealized_pnl):'—';
+const rp=d.realized_pnl!=null?((d.realized_pnl>=0?'+':'')+d.realized_pnl):'—';
+if(document.getElementById('plan-upnl'))document.getElementById('plan-upnl').textContent=up;
+if(document.getElementById('plan-rpnl'))document.getElementById('plan-rpnl').textContent=rp;
+if(document.getElementById('plan-ltpsrc'))document.getElementById('plan-ltpsrc').textContent=d.ltp_source||'ref_seed';
+if(document.getElementById('home-ltpsrc'))document.getElementById('home-ltpsrc').textContent=d.ltp_source||'ref_seed';
+if(document.getElementById('kpi-upnl'))document.getElementById('kpi-upnl').textContent='P&L '+up;
+if(d.upstox){const el=document.getElementById('upx-pill');if(el)el.textContent=d.upstox.connected?'Upstox OK':(d.upstox.token_set?'Upstox token':'Upstox off');}
+if(d.plan){if(d.plan.stop_pct!=null)document.getElementById('plan-stop').textContent='-'+d.plan.stop_pct+'%';if(d.plan.target_pct!=null)document.getElementById('plan-target').textContent='+'+d.plan.target_pct+'%';if(d.plan.max_hold_days!=null)document.getElementById('plan-hold').textContent=d.plan.max_hold_days+'d';}
+if(d.governor){const lvl=(d.governor.level||'L0').split('_')[0];document.getElementById('kpi-gov').textContent=lvl;document.getElementById('gov-level').textContent=d.governor.level||'L0';document.getElementById('gov-pill').textContent='Gov '+lvl;const exp=d.governor.exposure_pct!=null?d.governor.exposure_pct:100;document.getElementById('gov-exp').textContent=exp+'%';document.getElementById('gov-bar').style.width=exp+'%';}
+const opens=d.open||[];const posBody=document.getElementById('pos-body');const homePos=document.getElementById('home-pos');
+if(!opens.length){posBody.innerHTML='<tr><td colspan="9" class="muted" style="text-align:center;padding:18px">No open — Run scan auto-buys SELECT</td></tr>';homePos.innerHTML='<tr><td colspan="3" class="muted" style="text-align:center;padding:16px">No opens</td></tr>';}
+else{posBody.innerHTML=opens.map(p=>{const pnl=p.pnl_label||(p.pnl!=null?((p.pnl>=0?'+':'')+p.pnl):'—');const col=(p.pnl!=null&&p.pnl<0)?'dn':'up';return '<tr><td><strong>'+p.symbol+'</strong></td><td>'+p.qty+'</td><td>'+p.entry+'</td><td>'+(p.ltp!=null?p.ltp:'—')+'</td><td class="'+col+'">'+pnl+'</td><td>'+(p.stop!=null?p.stop:'—')+'</td><td>'+(p.target!=null?p.target:'—')+'</td><td>'+(p.days_left!=null?p.days_left+'d':'—')+'</td><td><span class="tag open">'+(p.status||'OPEN')+'</span></td></tr>';}).join('');
+homePos.innerHTML=opens.slice(0,6).map(p=>{const pnl=p.pnl!=null?((p.pnl>=0?'+':'')+p.pnl):'—';const col=(p.pnl!=null&&p.pnl<0)?'dn':'up';return '<tr><td><strong>'+p.symbol+'</strong></td><td>'+(p.ltp!=null?p.ltp:'—')+'</td><td class="'+col+'">'+pnl+'</td></tr>';}).join('');}
+const orders=d.orders||[];const ordBody=document.getElementById('ord-body');
+if(!orders.length)ordBody.innerHTML='<tr><td colspan="6" class="muted" style="text-align:center;padding:18px">No orders</td></tr>';
+else ordBody.innerHTML=orders.slice(0,30).map(o=>'<tr><td class="muted">'+(o.created_at||'').replace('T',' ').replace('Z','')+'</td><td><strong>'+o.symbol+'</strong></td><td>'+o.side+'</td><td>'+(o.sized_qty!=null?o.sized_qty:o.qty)+'</td><td>'+o.fill_price+'</td><td>'+o.status+'</td></tr>').join('');
+const closed=d.closed||[];const closedBody=document.getElementById('closed-body');
+if(!closed.length)closedBody.innerHTML='<tr><td colspan="5" class="muted" style="text-align:center;padding:18px">No closed</td></tr>';
+else closedBody.innerHTML=closed.slice().reverse().slice(0,20).map(p=>{const pnl=p.pnl_label||(p.pnl!=null?((p.pnl>=0?'+':'')+p.pnl):'—');return '<tr><td><strong>'+p.symbol+'</strong></td><td>'+p.entry+'</td><td>'+(p.exit_price!=null?p.exit_price:'—')+'</td><td>'+pnl+'</td><td>'+(p.exit_reason||'—')+'</td></tr>';}).join('');
+}catch(e){}}
+async function runAuto(){try{const r=await fetch('/api/paper/auto');const d=await r.json();await loadBook();alert('Auto-buy: '+((d.auto_paper&&d.auto_paper.bought)||0)+' new (skips already open)');}catch(e){alert(e);}}
+async function boot(){try{const r=await fetch('/api/health');const d=await r.json();if(d.paper_open!=null){document.getElementById('kpi-open').textContent=d.paper_open;document.getElementById('ft-open').textContent='Open '+d.paper_open;}const ux=d.upstox||{};document.getElementById('upx-pill').textContent=ux.connected?'Upstox OK':(ux.token_set||d.upstox_token_set)?'Upstox token':'Upstox off';}catch(e){}try{const u=await fetch('/api/universe/core');const ud=await u.json();if(ud.count){document.getElementById('kpi-core').textContent=ud.count;document.getElementById('uni-core').textContent=ud.count;document.getElementById('ft-core').textContent='Core '+ud.count;}}catch(e){}await loadScan();await loadBook();}
+boot();
+</script>
 </body>
 </html>
