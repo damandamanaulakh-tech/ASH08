@@ -1,1 +1,2 @@
-"""ASH08 package — Adaptive desk (own repo, not AshStocks)."""
+"""ASH08 package."""
+__version__ = "1.0.0"

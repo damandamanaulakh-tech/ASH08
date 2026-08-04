@@ -1,1 +1,1 @@
-# ASH08 — stdlib Supabase REST client (no extra package required)
+requests>=2.31.0
