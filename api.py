@@ -1,5 +1,5 @@
 """ASH08 API. Start: python api.py
-LTP chain: Upstox > Yahoo NSE live > paper_marks last resort.
+Upstox ONLY for LTP. Token must work from this host.
 """
 from __future__ import annotations
 import json, logging, mimetypes, os, sys
@@ -89,43 +89,36 @@ def upstox_status():
         info["detail"] = f"token set but API failed: {e}"
     return info
 
-def _yahoo_quotes(symbols):
-    try:
-        from ash08.yahoo_quotes import fetch_yahoo_quotes
-        return fetch_yahoo_quotes(symbols) or {}
-    except Exception as e:
-        LOG.warning("yahoo quotes: %s", e)
-        return {}
-
 def quotes_for_symbols(symbols, prefer_live=True):
+    """Upstox ONLY. No other source, no invented prices."""
     out = {}
     toks = [str(s).strip().upper() for s in (symbols or []) if s]
     toks = list(dict.fromkeys(toks))
     if not toks:
         return {}
-    if "fetch_quotes" in MODS and (os.environ.get("UPSTOX_ACCESS_TOKEN") or "").strip():
-        keys = [f"NSE_EQ|{s}" for s in toks]
-        try:
-            raw = MODS["fetch_quotes"](keys)
-            for k, v in (raw or {}).items():
-                if not isinstance(v, dict):
-                    continue
-                sym = k.split("|")[-1] if "|" in k else k
-                lp = v.get("last_price") or v.get("lastPrice")
-                if lp is None and isinstance(v.get("ohlc"), dict):
-                    lp = v["ohlc"].get("close")
-                if lp is not None:
-                    try:
-                        out[str(sym).upper()] = float(lp)
-                    except Exception:
-                        pass
-        except Exception as e:
-            LOG.warning("upstox quotes: %s", e)
-    missing = [s for s in toks if s not in out]
-    if missing:
-        y = _yahoo_quotes(missing)
-        for s, px in y.items():
-            out[s] = px
+    if "fetch_quotes" not in MODS:
+        LOG.warning("upstox quotes: fetch_quotes module missing")
+        return {}
+    if not (os.environ.get("UPSTOX_ACCESS_TOKEN") or "").strip():
+        LOG.warning("upstox quotes: UPSTOX_ACCESS_TOKEN missing")
+        return {}
+    keys = [f"NSE_EQ|{s}" for s in toks]
+    try:
+        raw = MODS["fetch_quotes"](keys)
+        for k, v in (raw or {}).items():
+            if not isinstance(v, dict):
+                continue
+            sym = k.split("|")[-1] if "|" in k else k
+            lp = v.get("last_price") or v.get("lastPrice")
+            if lp is None and isinstance(v.get("ohlc"), dict):
+                lp = v["ohlc"].get("close")
+            if lp is not None:
+                try:
+                    out[str(sym).upper()] = float(lp)
+                except Exception:
+                    pass
+    except Exception as e:
+        LOG.warning("upstox quotes: %s", e)
     return out
 
 def auto_buy_from_scan(scan_dict):
@@ -183,7 +176,7 @@ def seed_demo_local(reset_paper=False):
     auto = auto_buy_from_scan(scan_dict)
     return {"ok": True, "core_count": len(symbols), "select": snap.select_count,
             "watch": snap.watch_count, "reject": snap.reject_count, "auto_paper": auto,
-            "live_quote_count": len(live_map), "ltp_source": ("yahoo_nse" if live_map else "ref_seed"),
+            "live_quote_count": len(live_map), "ltp_source": ("upstox" if live_map else "upstox_failed"),
             "upstox": upstox_status()}
 
 class Handler(BaseHTTPRequestHandler):
@@ -230,7 +223,7 @@ class Handler(BaseHTTPRequestHandler):
                 "core_seed_count": CORE_COUNT, "paper_open": open_n, "store": store_info,
                 "upstox": ux, "upstox_token_set": ux.get("token_set"), "upstox_connected": ux.get("connected"),
                 "trade_plan": {"stop_pct": 3.0, "target_pct": 6.0, "max_hold_days": 15, "max_open": 10},
-                "note": "LTP chain: Upstox > Yahoo NSE live > paper_marks last resort.",
+                "note": "Upstox ONLY for LTP. Token must work from this host.",
             })
         if path == "/api/universe/core":
             if "store" not in MODS:
@@ -280,12 +273,10 @@ class Handler(BaseHTTPRequestHandler):
         opens_sym = [p["symbol"] for p in eng.positions if p.get("status") == "OPEN"]
         live = quotes_for_symbols(opens_sym)
         ux = upstox_status()
-        if live and ux.get("connected"):
+        if live:
             ltp_source = "upstox"
-        elif live:
-            ltp_source = "yahoo_nse"
         else:
-            ltp_source = "paper_marks"
+            ltp_source = "upstox_failed"
         if hasattr(eng, "book_payload"):
             book = eng.book_payload(live_prices=live)
         else:
@@ -319,7 +310,7 @@ class Handler(BaseHTTPRequestHandler):
             "ltp_source": ltp_source,
             "live_quote_count": len(live),
             "upstox": ux,
-            "note": "LTP: upstox > yahoo_nse > paper_marks.",
+            "note": "Upstox ONLY. If ltp_source=upstox_failed, Cloudflare blocked Render IP (token can still be valid on your PC).",
         })
 
     def api_pnl_tick(self):
@@ -335,7 +326,7 @@ class Handler(BaseHTTPRequestHandler):
                 eng.mark_to_market(live)
             book = {"unrealized_pnl": 0, "realized_pnl": 0, "total_pnl": 0, "open": [], "open_count": 0}
         ux = upstox_status()
-        src = "upstox" if (live and ux.get("connected")) else ("yahoo_nse" if live else "paper_marks")
+        src = "upstox" if live else "upstox_failed"
         return self.json(200, {
             "ok": True, "ltp_source": src, "live_quote_count": len(live),
             "unrealized_pnl": book.get("unrealized_pnl") or 0,
@@ -363,7 +354,9 @@ class Handler(BaseHTTPRequestHandler):
         price = _f(body.get("price")); stop = _f(body.get("stop")); target = _f(body.get("target"))
         if not price or price <= 0:
             live = quotes_for_symbols([symbol])
-            price = live.get(symbol) or REF_LTP.get(symbol, 100.0)
+            if not live.get(symbol):
+                return self.json(400, {"ok": False, "error": "Upstox quote failed for " + symbol, "upstox": upstox_status()})
+            price = live[symbol]
         try:
             order = eng.place_order(symbol=symbol, side="BUY", order_type="MARKET",
                                     qty=qty, fill_price=price, stop=stop, target=target, source="manual")
