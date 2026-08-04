@@ -1,6 +1,5 @@
-"""ASH08 API restored baseline. Start: python api.py
-Paper P&L works without Upstox (deterministic paper marks).
-Upstox is optional: live LTP only when Cloudflare allows the host.
+"""ASH08 API. Start: python api.py
+LTP chain: Upstox > Yahoo NSE live > paper_marks last resort.
 """
 from __future__ import annotations
 import json, logging, mimetypes, os, sys
@@ -91,7 +90,6 @@ def upstox_status():
     return info
 
 def _yahoo_quotes(symbols):
-    """Live NSE prices via Yahoo Finance when Upstox is blocked."""
     try:
         from ash08.yahoo_quotes import fetch_yahoo_quotes
         return fetch_yahoo_quotes(symbols) or {}
@@ -100,7 +98,6 @@ def _yahoo_quotes(symbols):
         return {}
 
 def quotes_for_symbols(symbols, prefer_live=True):
-    """Upstox first; Yahoo NSE live fallback; never invent prices here."""
     out = {}
     toks = [str(s).strip().upper() for s in (symbols or []) if s]
     toks = list(dict.fromkeys(toks))
@@ -180,10 +177,8 @@ def seed_demo_local(reset_paper=False):
     if reset_paper:
         p = DATA_DIR / "paper_state.json"
         if p.exists():
-            try:
-                p.unlink()
-            except Exception:
-                pass
+            try: p.unlink()
+            except Exception: pass
         _ENGINE = None
     auto = auto_buy_from_scan(scan_dict)
     return {"ok": True, "core_count": len(symbols), "select": snap.select_count,
@@ -324,7 +319,7 @@ class Handler(BaseHTTPRequestHandler):
             "ltp_source": ltp_source,
             "live_quote_count": len(live),
             "upstox": ux,
-            "note": "LTP: upstox > yahoo_nse > paper_marks. Entries reseeded from live when possible.",
+            "note": "LTP: upstox > yahoo_nse > paper_marks.",
         })
 
     def api_pnl_tick(self):
@@ -340,22 +335,14 @@ class Handler(BaseHTTPRequestHandler):
                 eng.mark_to_market(live)
             book = {"unrealized_pnl": 0, "realized_pnl": 0, "total_pnl": 0, "open": [], "open_count": 0}
         ux = upstox_status()
-        if live and ux.get("connected"):
-            src = "upstox"
-        elif live:
-            src = "yahoo_nse"
-        else:
-            src = "paper_marks"
+        src = "upstox" if (live and ux.get("connected")) else ("yahoo_nse" if live else "paper_marks")
         return self.json(200, {
-            "ok": True,
-            "ltp_source": src,
-            "live_quote_count": len(live),
+            "ok": True, "ltp_source": src, "live_quote_count": len(live),
             "unrealized_pnl": book.get("unrealized_pnl") or 0,
             "realized_pnl": book.get("realized_pnl") or 0,
             "total_pnl": book.get("total_pnl") or 0,
             "open_count": book.get("open_count") or 0,
-            "open": book.get("open") or [],
-            "upstox": ux,
+            "open": book.get("open") or [], "upstox": ux,
         })
 
     def api_paper_buy(self, body):
@@ -370,12 +357,9 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             qty = 50
         def _f(v, d=None):
-            if v is None or v == "":
-                return d
-            try:
-                return float(v)
-            except Exception:
-                return d
+            if v is None or v == "": return d
+            try: return float(v)
+            except Exception: return d
         price = _f(body.get("price")); stop = _f(body.get("stop")); target = _f(body.get("target"))
         if not price or price <= 0:
             live = quotes_for_symbols([symbol])
@@ -383,7 +367,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             order = eng.place_order(symbol=symbol, side="BUY", order_type="MARKET",
                                     qty=qty, fill_price=price, stop=stop, target=target, source="manual")
-            if hasattr(eng, "book_payload":
+            if hasattr(eng, "book_payload"):
                 eng.book_payload(live_prices=quotes_for_symbols([symbol]))
             elif hasattr(eng, "mark_to_market"):
                 eng.mark_to_market({symbol: price})
@@ -399,17 +383,13 @@ class Handler(BaseHTTPRequestHandler):
     def serve_static(self, path):
         candidate = DESK / "ASH08_Desk_Dashboard.html" if path in ("/", "") else (DESK / path.lstrip("/")).resolve()
         if path not in ("/", ""):
-            try:
-                candidate.relative_to(DESK.resolve())
-            except ValueError:
-                return self.json(403, {"ok": False, "error": "forbidden"})
+            try: candidate.relative_to(DESK.resolve())
+            except ValueError: return self.json(403, {"ok": False, "error": "forbidden"})
         if not candidate.is_file():
             alt = DESK / Path(path.lstrip("/")).name
-            if alt.is_file():
-                candidate = alt
+            if alt.is_file(): candidate = alt
             else:
-                self.send_error(404)
-                return
+                self.send_error(404); return
         data = candidate.read_bytes()
         self.send_response(200)
         self.send_header("Content-Type", mimetypes.guess_type(str(candidate))[0] or "application/octet-stream")
