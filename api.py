@@ -1,4 +1,7 @@
-"""ASH08 API restored baseline. Start: python api.py"""
+"""ASH08 API restored baseline. Start: python api.py
+Paper P&L works without Upstox (deterministic paper marks).
+Upstox is optional: live LTP only when Cloudflare allows the host.
+"""
 from __future__ import annotations
 import json, logging, mimetypes, os, sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -183,6 +186,8 @@ class Handler(BaseHTTPRequestHandler):
             body = {}
         if path == "/api/paper/buy":
             return self.api_paper_buy(body)
+        if path == "/api/pnl/tick":
+            return self.api_pnl_tick()
         return self.json(404, {"ok": False, "error": "not found"})
     def do_GET(self):
         parsed = urlparse(self.path)
@@ -203,6 +208,7 @@ class Handler(BaseHTTPRequestHandler):
                 "core_seed_count": CORE_COUNT, "paper_open": open_n, "store": store_info,
                 "upstox": ux, "upstox_token_set": ux.get("token_set"), "upstox_connected": ux.get("connected"),
                 "trade_plan": {"stop_pct": 3.0, "target_pct": 6.0, "max_hold_days": 15, "max_open": 10},
+                "note": "Upstox optional. Paper P&L uses paper marks when live quotes blocked.",
             })
         if path == "/api/universe/core":
             if "store" not in MODS:
@@ -224,6 +230,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.json(200, seed_demo_local())
         if path == "/api/paper/book":
             return self.api_paper_book()
+        if path == "/api/pnl/tick":
+            return self.api_pnl_tick()
         if path == "/api/paper/buy":
             body = {
                 "symbol": (qs.get("symbol") or [""])[0],
@@ -249,15 +257,19 @@ class Handler(BaseHTTPRequestHandler):
             return self.json(500, {"ok": False, "error": "paper engine missing"})
         opens_sym = [p["symbol"] for p in eng.positions if p.get("status") == "OPEN"]
         live = quotes_for_symbols(opens_sym)
-        if live and hasattr(eng, "mark_to_market"):
-            eng.mark_to_market(live)
-        book = eng.book_payload() if hasattr(eng, "book_payload") else {
-            "open": [p for p in eng.positions if p.get("status") == "OPEN"],
-            "closed": [p for p in eng.positions if p.get("status") != "OPEN"][-20:],
-            "orders": list(reversed(eng.orders[-50:])),
-            "open_count": sum(1 for p in eng.positions if p.get("status") == "OPEN"),
-            "order_count": len(eng.orders), "unrealized_pnl": 0, "realized_pnl": 0, "total_pnl": 0,
-        }
+        if hasattr(eng, "book_payload"):
+            book = eng.book_payload(live_prices=live)
+        else:
+            if hasattr(eng, "mark_to_market"):
+                eng.mark_to_market(live)
+            book = {
+                "open": [p for p in eng.positions if p.get("status") == "OPEN"],
+                "closed": [p for p in eng.positions if p.get("status") != "OPEN"][-20:],
+                "orders": list(reversed(eng.orders[-50:])),
+                "open_count": sum(1 for p in eng.positions if p.get("status") == "OPEN"),
+                "order_count": len(eng.orders),
+                "unrealized_pnl": 0, "realized_pnl": 0, "total_pnl": 0,
+            }
         gov = eng.governor.to_dict() if hasattr(eng.governor, "to_dict") else {
             "level": getattr(eng.governor, "level", "L0"),
             "exposure_pct": getattr(eng.governor, "exposure_pct", 100),
@@ -267,6 +279,7 @@ class Handler(BaseHTTPRequestHandler):
             "exits": ["STOP_HIT", "TARGET_HIT", "MAX_HOLD", "GOVERNOR_CUT", "ROTATION"],
             "size": "2.5% book x governor exposure",
         }
+        ltp_source = "upstox" if live else "paper_marks"
         return self.json(200, {
             "ok": True, "governor": gov, "plan": plan,
             "orders": book.get("orders") or [], "positions": eng.positions,
@@ -275,9 +288,32 @@ class Handler(BaseHTTPRequestHandler):
             "unrealized_pnl": book.get("unrealized_pnl") or 0,
             "realized_pnl": book.get("realized_pnl") or 0,
             "total_pnl": book.get("total_pnl") or 0,
-            "ltp_source": "upstox" if live else "ref_seed",
+            "ltp_source": ltp_source,
             "upstox": upstox_status(),
-            "note": "Orders FILLED = buy history. Open = live positions. Not two position books.",
+            "note": "Orders FILLED = buy history. Open = live positions. P&L works without Upstox (paper_marks).",
+        })
+
+    def api_pnl_tick(self):
+        eng = get_engine()
+        if not eng:
+            return self.json(500, {"ok": False, "error": "paper engine missing"})
+        opens_sym = [p["symbol"] for p in eng.positions if p.get("status") == "OPEN"]
+        live = quotes_for_symbols(opens_sym)
+        if hasattr(eng, "book_payload"):
+            book = eng.book_payload(live_prices=live)
+        else:
+            if hasattr(eng, "mark_to_market"):
+                eng.mark_to_market(live)
+            book = {"unrealized_pnl": 0, "realized_pnl": 0, "total_pnl": 0, "open": [], "open_count": 0}
+        return self.json(200, {
+            "ok": True,
+            "ltp_source": "upstox" if live else "paper_marks",
+            "unrealized_pnl": book.get("unrealized_pnl") or 0,
+            "realized_pnl": book.get("realized_pnl") or 0,
+            "total_pnl": book.get("total_pnl") or 0,
+            "open_count": book.get("open_count") or 0,
+            "open": book.get("open") or [],
+            "upstox": upstox_status(),
         })
 
     def api_paper_buy(self, body):
@@ -305,7 +341,9 @@ class Handler(BaseHTTPRequestHandler):
         try:
             order = eng.place_order(symbol=symbol, side="BUY", order_type="MARKET",
                                     qty=qty, fill_price=price, stop=stop, target=target, source="manual")
-            if hasattr(eng, "mark_to_market"):
+            if hasattr(eng, "book_payload"):
+                eng.book_payload(live_prices=quotes_for_symbols([symbol]))
+            elif hasattr(eng, "mark_to_market"):
                 eng.mark_to_market({symbol: price})
         except Exception as e:
             LOG.exception("buy")
