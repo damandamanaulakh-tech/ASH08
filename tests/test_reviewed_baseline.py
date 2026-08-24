@@ -2,6 +2,8 @@ import json
 import os
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from unittest.mock import patch
 
 from ash08 import upstox_client
@@ -106,6 +108,23 @@ class ReviewedBaselineTests(unittest.TestCase):
             self.assertEqual(result["bought"], 0)
             self.assertEqual(result["skipped_detail"][0]["reason"], "missing_live_price")
             self.assertEqual(engine.open_count(), 0)
+
+    def test_concurrent_orders_leave_one_valid_atomic_state_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            engine = PaperEngine(directory, book_value=5_000_000)
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                orders = list(pool.map(
+                    lambda number: engine.place_order(
+                        f"SYM{number}", "BUY", "MARKET", 1, 1000,
+                        idempotency_key=f"concurrent-{number}",
+                    ),
+                    range(20),
+                ))
+            self.assertEqual(sum(order["status"] == "FILLED" for order in orders), 10)
+            state_path = Path(directory) / "paper_state.json"
+            state = json.loads(state_path.read_text())
+            self.assertEqual(sum(position["status"] == "OPEN" for position in state["positions"]), 10)
+            self.assertEqual(list(Path(directory).glob(".paper_state.*.tmp")), [])
 
     def test_governor_requires_complete_fresh_evidence(self):
         unverified = evaluate_governor(damage=True, q10=True, sell=True)

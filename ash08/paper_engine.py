@@ -1,9 +1,11 @@
 """ASH08 Paper Engine - P&L, LTP mark-to-market, auto-SELECT. Works without Upstox."""
 from __future__ import annotations
-import argparse, json, logging, uuid
+import argparse, json, logging, os, uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
+from functools import wraps
 from pathlib import Path
+from threading import RLock
 from typing import Any, Dict, List, Optional
 
 from .config import (
@@ -26,6 +28,14 @@ def _now():
 
 def _id(p):
     return f"{p}_{uuid.uuid4().hex[:10]}"
+
+
+def synchronized(method):
+    @wraps(method)
+    def locked(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+    return locked
 
 
 def _parse_ts(s: str):
@@ -107,6 +117,7 @@ def evaluate_governor(
 
 class PaperEngine:
     def __init__(self, data_dir="ash08_data", book_value=DEFAULT_BOOK):
+        self._lock = RLock()
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.book_value = book_value
@@ -136,6 +147,7 @@ class PaperEngine:
                 bool(g.get("evidence_fresh")),
             )
 
+    @synchronized
     def size_qty(self, symbol, qty, price):
         if price is None or price <= 0 or qty is None or qty <= 0:
             return {"qty": 0, "requested_qty": qty, "name_headroom": 0.0}
@@ -154,6 +166,7 @@ class PaperEngine:
             "max_name_notional": round(max_n, 2),
         }
 
+    @synchronized
     def place_order(
         self,
         symbol,
@@ -320,12 +333,15 @@ class PaperEngine:
         self._save()
         return order
 
+    @synchronized
     def open_symbols(self):
         return {p["symbol"] for p in self.positions if p.get("status") == "OPEN"}
 
+    @synchronized
     def open_count(self):
         return sum(1 for p in self.positions if p.get("status") == "OPEN")
 
+    @synchronized
     def refresh_hold_days(self):
         now = datetime.now(timezone.utc)
         changed = False
@@ -351,6 +367,7 @@ class PaperEngine:
         if changed:
             self._save()
 
+    @synchronized
     def mark_to_market(self, price_map=None, use_paper_marks=False):
         """Update P&L only from supplied marks; never manufacture a price."""
         price_map = price_map or {}
@@ -387,6 +404,7 @@ class PaperEngine:
         self.refresh_hold_days()
         self._save()
 
+    @synchronized
     def process_marks(self, price_map=None):
         price_map = price_map or {}
         valid = {}
@@ -407,9 +425,11 @@ class PaperEngine:
         open_count = self.open_count()
         return {"marked": marked, "missing": max(0, open_count - marked), "open_count": open_count}
 
+    @synchronized
     def update_ltp(self, symbol, ltp):
         self.mark_to_market({str(symbol).upper(): float(ltp)}, use_paper_marks=False)
 
+    @synchronized
     def governor_cut(self):
         opens = [p for p in self.positions if p["status"] == "OPEN"]
         if not opens:
@@ -425,6 +445,7 @@ class PaperEngine:
         self._save()
         return [victim]
 
+    @synchronized
     def auto_buy_selects(self, select_rows, price_map=None):
         price_map = price_map or {}
         already = self.open_symbols()
@@ -483,6 +504,7 @@ class PaperEngine:
             },
         }
 
+    @synchronized
     def book_payload(self, live_prices=None):
         """Recompute P&L from supplied Upstox prices without synthetic marks."""
         live_prices = live_prices or {}
@@ -505,23 +527,36 @@ class PaperEngine:
             "total_pnl": round(unreal + realized, 2),
         }
 
+    @synchronized
     def _save(self):
-        (self.data_dir / "paper_state.json").write_text(
-            json.dumps(
-                {
-                    "governor": self.governor.to_dict(),
-                    "orders": self.orders,
-                    "positions": self.positions,
-                    "plan": {
-                        "stop_pct": STOP_PCT,
-                        "target_pct": TARGET_PCT,
-                        "max_hold_days": MAX_HOLD_DAYS,
-                        "max_open": MAX_OPEN_POSITIONS,
-                    },
+        target = self.data_dir / "paper_state.json"
+        temporary = self.data_dir / f".paper_state.{uuid.uuid4().hex}.tmp"
+        payload = json.dumps(
+            {
+                "governor": self.governor.to_dict(),
+                "orders": self.orders,
+                "positions": self.positions,
+                "plan": {
+                    "stop_pct": STOP_PCT,
+                    "target_pct": TARGET_PCT,
+                    "max_hold_days": MAX_HOLD_DAYS,
+                    "max_open": MAX_OPEN_POSITIONS,
                 },
-                indent=2,
-            )
+            },
+            indent=2,
         )
+        try:
+            with temporary.open("w", encoding="utf-8") as handle:
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, target)
+        finally:
+            if temporary.exists():
+                try:
+                    temporary.unlink()
+                except OSError:
+                    LOG.warning("temporary paper state cleanup failed: %s", temporary)
 
 
 def run_demo(data_dir):

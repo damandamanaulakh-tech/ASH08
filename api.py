@@ -2,10 +2,14 @@
 Upstox ONLY for LTP. Token must work from this host.
 """
 from __future__ import annotations
-import json, logging, mimetypes, os, sys
+import hmac, json, logging, mimetypes, os, re, sys, time
+from collections import defaultdict, deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, unquote, urlparse
+from threading import RLock
+from urllib.parse import unquote, urlparse
+
+from ash08 import config as CONFIG
 
 ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
@@ -14,10 +18,12 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 LOG = logging.getLogger("ash08.api")
 DESK = ROOT / "desk"
 PORT = int(os.environ.get("PORT", "10000"))
-DATA_DIR = Path("ash08_data")
-DEMO_ENABLED = (os.environ.get("ASH08_ENABLE_DEMO") or "").strip().lower() in {
-    "1", "true", "yes", "on",
-}
+DATA_DIR = CONFIG.DATA_DIR
+DEMO_ENABLED = CONFIG.ALLOW_DEMO
+SYMBOL_RE = re.compile(r"^[A-Z0-9&.-]{1,30}$")
+_ENGINE_LOCK = RLock()
+_RATE_LOCK = RLock()
+_REQUEST_TIMES = defaultdict(deque)
 REF_LTP = {
     "TCS": 3840.0, "HDFCBANK": 1690.0, "RELIANCE": 2950.0, "INFY": 1850.0,
     "ICICIBANK": 1180.0, "SBIN": 820.0, "ITC": 450.0, "MTARTECH": 1850.0,
@@ -56,25 +62,29 @@ except Exception:
 _ENGINE = None
 def get_engine():
     global _ENGINE
-    if _ENGINE is not None:
+    with _ENGINE_LOCK:
+        if _ENGINE is not None:
+            return _ENGINE
+        if "PaperEngine" not in MODS:
+            return None
+        _ENGINE = MODS["PaperEngine"](
+            data_dir=str(DATA_DIR),
+            book_value=CONFIG.BOOK_VALUE,
+        )
         return _ENGINE
-    if "PaperEngine" not in MODS:
-        return None
-    eng = MODS["PaperEngine"](data_dir=str(DATA_DIR))
-    p = DATA_DIR / "paper_state.json"
-    if p.exists():
-        try:
-            st = json.loads(p.read_text())
-            eng.orders = st.get("orders") or []
-            eng.positions = st.get("positions") or []
-            g = st.get("governor") or {}
-            if g and hasattr(eng, "governor"):
-                eng.governor.level = g.get("level", eng.governor.level)
-                eng.governor.exposure_pct = float(g.get("exposure_pct", 100))
-        except Exception as e:
-            LOG.warning("paper load: %s", e)
-    _ENGINE = eng
-    return eng
+
+
+def rate_limit_allows(client_id):
+    now = time.monotonic()
+    cutoff = now - 60.0
+    with _RATE_LOCK:
+        history = _REQUEST_TIMES[str(client_id)]
+        while history and history[0] < cutoff:
+            history.popleft()
+        if len(history) >= CONFIG.RATE_LIMIT_PER_MINUTE:
+            return False
+        history.append(now)
+        return True
 
 def upstox_status():
     tok = (os.environ.get("UPSTOX_ACCESS_TOKEN") or "").strip()
@@ -203,31 +213,127 @@ class Handler(BaseHTTPRequestHandler):
         LOG.info("%s - %s", self.address_string(), fmt % args)
     def do_HEAD(self):
         self.send_response(200); self.send_header("Content-Length", "0"); self.end_headers()
+
+    def _origin_allowed(self):
+        origin = (self.headers.get("Origin") or "").strip().rstrip("/")
+        if not origin:
+            return True
+        if origin in CONFIG.TRUSTED_ORIGINS:
+            return True
+        host = (self.headers.get("Host") or "").strip().lower()
+        try:
+            return urlparse(origin).netloc.lower() == host
+        except Exception:
+            return False
+
+    def _authorized(self):
+        if not CONFIG.API_TOKEN:
+            return False
+        authorization = (self.headers.get("Authorization") or "").strip()
+        bearer = authorization[7:].strip() if authorization.lower().startswith("bearer ") else ""
+        supplied = bearer or (self.headers.get("X-ASH08-Token") or "").strip()
+        return bool(supplied) and hmac.compare_digest(supplied, CONFIG.API_TOKEN)
+
+    def _reject_mutation(self, code, error):
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except (TypeError, ValueError):
+            length = 0
+        if 0 < length <= 1024 * 1024:
+            self.rfile.read(length)
+        self.close_connection = True
+        self.json(code, {"ok": False, "error": error})
+
+    def _require_mutation_access(self):
+        if not self._origin_allowed():
+            self._reject_mutation(403, "origin not allowed")
+            return False
+        if not CONFIG.API_TOKEN:
+            self._reject_mutation(503, "ASH08_API_TOKEN is not configured")
+            return False
+        if not self._authorized():
+            self._reject_mutation(401, "valid API token required")
+            return False
+        client_id = self.client_address[0] if self.client_address else "unknown"
+        if not rate_limit_allows(client_id):
+            self._reject_mutation(429, "mutation rate limit exceeded")
+            return False
+        return True
+
+    def _read_json_body(self):
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except (TypeError, ValueError):
+            self.json(400, {"ok": False, "error": "invalid Content-Length"})
+            return None
+        if length < 0 or length > CONFIG.MAX_BODY_BYTES:
+            if 0 < length <= 1024 * 1024:
+                self.rfile.read(length)
+            self.close_connection = True
+            self.json(413, {"ok": False, "error": "request body too large"})
+            return None
+        content_type = (self.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
+        if length and content_type != "application/json":
+            self.json(415, {"ok": False, "error": "Content-Type must be application/json"})
+            return None
+        try:
+            body = json.loads(self.rfile.read(length).decode("utf-8") if length else "{}")
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            self.json(400, {"ok": False, "error": "invalid JSON body"})
+            return None
+        if not isinstance(body, dict):
+            self.json(400, {"ok": False, "error": "JSON body must be an object"})
+            return None
+        return body
+
     def do_OPTIONS(self):
+        if not self._origin_allowed():
+            return self.json(403, {"ok": False, "error": "origin not allowed"})
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self._send_cors_headers()
+        self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-ASH08-Token")
         self.send_header("Content-Length", "0"); self.end_headers()
+
     def do_POST(self):
         path = unquote(urlparse(self.path).path or "/")
         if path.endswith("/"): path = path[:-1]
-        n = int(self.headers.get("Content-Length") or 0)
-        try:
-            body = json.loads(self.rfile.read(n).decode() if n else "{}")
-        except Exception:
-            body = {}
+        if not self._require_mutation_access():
+            return
+        body = self._read_json_body()
+        if body is None:
+            return
         if path == "/api/paper/buy":
             return self.api_paper_buy(body)
         if path == "/api/pnl/tick":
             return self.api_pnl_tick()
+        if path == "/api/paper/auto":
+            return self.api_paper_auto()
+        if path == "/api/demo/run":
+            result = seed_demo_local()
+            return self.json(200 if result.get("ok") else 403, result)
+        if path == "/api/scan/run":
+            return self.json(409, {
+                "ok": False,
+                "error": "No live scanner input was supplied; refusing to fabricate scanner metrics.",
+            })
         return self.json(404, {"ok": False, "error": "not found"})
+
     def do_GET(self):
         parsed = urlparse(self.path)
         path = unquote(parsed.path or "/")
         if not path.startswith("/"): path = "/" + path
         if len(path) > 1 and path.endswith("/"): path = path[:-1]
-        qs = parse_qs(parsed.query or "")
+        mutation_paths = {
+            "/api/demo/run", "/api/scan/run", "/api/paper/auto",
+            "/api/paper/buy", "/api/pnl/tick",
+        }
+        if path in mutation_paths:
+            self.send_response(405)
+            self.send_header("Allow", "POST")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         if path == "/api/health":
             eng = get_engine()
             open_n = sum(1 for p in (eng.positions if eng else []) if p.get("status") == "OPEN")
@@ -240,7 +346,13 @@ class Handler(BaseHTTPRequestHandler):
                 "ok": True, "service": "ash08-desk", "modules": sorted(MODS.keys()),
                 "core_seed_count": CORE_COUNT, "paper_open": open_n, "store": store_info,
                 "upstox": ux, "upstox_token_set": ux.get("token_set"), "upstox_connected": ux.get("connected"),
-                "trade_plan": {"stop_pct": 3.0, "target_pct": 6.0, "max_hold_days": 15, "max_open": 10},
+                "mutation_auth_configured": bool(CONFIG.API_TOKEN),
+                "trade_plan": {
+                    "stop_pct": CONFIG.STOP_PCT,
+                    "target_pct": CONFIG.TARGET_PCT,
+                    "max_hold_days": CONFIG.MAX_HOLD_SESSIONS,
+                    "max_open": CONFIG.MAX_OPEN_POSITIONS,
+                },
                 "note": "Upstox ONLY for LTP. Token must work from this host.",
             })
         if path == "/api/universe/core":
@@ -256,38 +368,23 @@ class Handler(BaseHTTPRequestHandler):
                 return self.json(500, {"ok": False, "error": "store missing"})
             data = MODS["store"]().load_scan()
             return self.json(200, data or {"rows": [], "data_status": "EMPTY"})
-        if path == "/api/scan/run":
-            return self.json(409, {
-                "ok": False,
-                "error": "No live scanner input was supplied; refusing to fabricate scanner metrics.",
-            })
-        if path == "/api/demo/run":
-            result = seed_demo_local()
-            return self.json(200 if result.get("ok") else 403, result)
         if path == "/api/paper/book":
             return self.api_paper_book()
-        if path == "/api/pnl/tick":
-            return self.api_pnl_tick()
-        if path == "/api/paper/buy":
-            body = {
-                "symbol": (qs.get("symbol") or [""])[0],
-                "qty": (qs.get("qty") or ["1"])[0],
-                "price": (qs.get("price") or [""])[0],
-                "stop": (qs.get("stop") or [""])[0],
-                "target": (qs.get("target") or [""])[0],
-            }
-            return self.api_paper_buy(body)
-        if path == "/api/paper/auto":
-            if "store" not in MODS:
-                return self.json(500, {"ok": False, "error": "store missing"})
-            scan = MODS["store"]().load_scan() or {}
-            if not scan.get("rows"):
-                return self.json(409, {
-                    "ok": False,
-                    "error": "No scanner rows are available; refusing to seed synthetic candidates.",
-                })
-            return self.json(200, {"ok": True, "auto_paper": auto_buy_from_scan(scan), "upstox": upstox_status()})
         return self.serve_static(path)
+
+    def api_paper_auto(self):
+        if "store" not in MODS:
+            return self.json(500, {"ok": False, "error": "store missing"})
+        scan = MODS["store"]().load_scan() or {}
+        if not scan.get("rows"):
+            return self.json(409, {
+                "ok": False,
+                "error": "No scanner rows are available; refusing to seed synthetic candidates.",
+            })
+        result = auto_buy_from_scan(scan)
+        if isinstance(result, dict) and result.get("blocked") == "SYNTHETIC_SCAN":
+            return self.json(409, {"ok": False, "auto_paper": result})
+        return self.json(200, {"ok": True, "auto_paper": result, "upstox": upstox_status()})
 
     def api_paper_book(self):
         eng = get_engine()
@@ -318,9 +415,12 @@ class Handler(BaseHTTPRequestHandler):
             "exposure_pct": getattr(eng.governor, "exposure_pct", 100),
         }
         plan = {
-            "stop_pct": 3.0, "target_pct": 6.0, "max_hold_days": 15, "max_open": 10,
+            "stop_pct": CONFIG.STOP_PCT,
+            "target_pct": CONFIG.TARGET_PCT,
+            "max_hold_days": CONFIG.MAX_HOLD_SESSIONS,
+            "max_open": CONFIG.MAX_OPEN_POSITIONS,
             "exits": ["STOP_HIT", "TARGET_HIT", "MAX_HOLD", "GOVERNOR_CUT", "ROTATION"],
-            "size": "2.5% book x governor exposure",
+            "size": f"{CONFIG.MAX_NAME_PCT}% book x governor exposure",
         }
         return self.json(200, {
             "ok": True, "governor": gov, "plan": plan,
@@ -366,10 +466,14 @@ class Handler(BaseHTTPRequestHandler):
         symbol = str(body.get("symbol") or "").strip().upper()
         if not symbol:
             return self.json(400, {"ok": False, "error": "symbol required"})
+        if not SYMBOL_RE.fullmatch(symbol):
+            return self.json(400, {"ok": False, "error": "invalid NSE symbol format"})
         try:
-            qty = max(1, int(float(body.get("qty") or 50)))
-        except Exception:
-            qty = 50
+            qty = int(body.get("qty") or 0)
+        except (TypeError, ValueError):
+            return self.json(400, {"ok": False, "error": "qty must be a positive integer"})
+        if qty <= 0:
+            return self.json(400, {"ok": False, "error": "qty must be a positive integer"})
         def _f(v, d=None):
             if v is None or v == "": return d
             try: return float(v)
@@ -381,8 +485,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self.json(400, {"ok": False, "error": "Upstox quote failed for " + symbol, "upstox": upstox_status()})
             price = live[symbol]
         try:
+            idempotency_key = str(
+                body.get("idempotency_key")
+                or self.headers.get("Idempotency-Key")
+                or ""
+            ).strip() or None
             order = eng.place_order(symbol=symbol, side="BUY", order_type="MARKET",
-                                    qty=qty, fill_price=price, stop=stop, target=target, source="manual")
+                                    qty=qty, fill_price=price, stop=stop, target=target, source="manual",
+                                    idempotency_key=idempotency_key)
             if hasattr(eng, "book_payload"):
                 eng.book_payload(live_prices=quotes_for_symbols([symbol]))
             elif hasattr(eng, "mark_to_market"):
@@ -391,8 +501,10 @@ class Handler(BaseHTTPRequestHandler):
             LOG.exception("buy")
             return self.json(500, {"ok": False, "error": str(e)})
         opens = [p for p in eng.positions if p.get("status") == "OPEN"]
-        return self.json(200, {
-            "ok": True, "order": order, "open_count": len(opens), "positions": opens,
+        filled = order.get("status") == "FILLED"
+        return self.json(200 if filled else 409, {
+            "ok": filled, "order": order, "open_count": len(opens), "positions": opens,
+            "error": None if filled else order.get("reason") or "order rejected",
             "message": f"PAPER {order.get('status')}: {symbol} x {order.get('sized_qty') or order.get('qty')} @ {price} | stop={order.get('stop')} target={order.get('target')} hold={order.get('hold_days')}d",
         })
 
@@ -414,12 +526,20 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _send_cors_headers(self):
+        origin = (self.headers.get("Origin") or "").strip().rstrip("/")
+        if origin and self._origin_allowed():
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
+
     def json(self, code, obj):
         raw = json.dumps(obj, default=str).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(raw)))
-        self.send_header("Access-Control-Allow-Origin", "*")
+        if self.close_connection:
+            self.send_header("Connection", "close")
+        self._send_cors_headers()
         self.end_headers()
         self.wfile.write(raw)
 

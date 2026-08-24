@@ -4,7 +4,8 @@ ASH08 is a separate paper-trading product for Indian NSE equities. It combines a
 
 Production startup never seeds demo scans, resets the paper ledger, or creates
 orders from synthetic rows. For an isolated local UI demonstration only, set
-`ASH08_ENABLE_DEMO=true` and call `/api/demo/run`; generated records are marked
+`ASH08_ALLOW_DEMO=true` and send an authenticated `POST` to `/api/demo/run`;
+generated records are marked
 `synthetic_demo` and are blocked from automatic paper execution.
 
 ## Approved runtime baseline
@@ -44,6 +45,9 @@ The repository includes `render.yaml` with:
 - the approved non-secret ₹50 lakh runtime parameters
 
 Secrets such as Upstox and Supabase credentials must be configured only in Render environment settings and must not be committed.
+
+`ASH08_API_TOKEN` is required for all state-changing API requests. The browser
+keeps the value in session storage only and sends it as `X-ASH08-Token`.
 
 ## Important operating rule
 
