@@ -2,6 +2,11 @@
 
 ASH08 is a separate paper-trading product for Indian NSE equities. It combines a validated universe, strict scanner, paper-accounting engine, and Adaptive Risk Governor.
 
+Production startup never seeds demo scans, resets the paper ledger, or creates
+orders from synthetic rows. For an isolated local UI demonstration only, set
+`ASH08_ENABLE_DEMO=true` and call `/api/demo/run`; generated records are marked
+`synthetic_demo` and are blocked from automatic paper execution.
+
 ## Approved runtime baseline
 
 - Book value: ₹50,00,000

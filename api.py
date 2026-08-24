@@ -15,6 +15,9 @@ LOG = logging.getLogger("ash08.api")
 DESK = ROOT / "desk"
 PORT = int(os.environ.get("PORT", "10000"))
 DATA_DIR = Path("ash08_data")
+DEMO_ENABLED = (os.environ.get("ASH08_ENABLE_DEMO") or "").strip().lower() in {
+    "1", "true", "yes", "on",
+}
 REF_LTP = {
     "TCS": 3840.0, "HDFCBANK": 1690.0, "RELIANCE": 2950.0, "INFY": 1850.0,
     "ICICIBANK": 1180.0, "SBIN": 820.0, "ITC": 450.0, "MTARTECH": 1850.0,
@@ -125,6 +128,13 @@ def auto_buy_from_scan(scan_dict):
     eng = get_engine()
     if not eng or not hasattr(eng, "auto_buy_selects"):
         return None
+    if scan_dict.get("synthetic") or str(scan_dict.get("source") or "").lower().startswith("synthetic"):
+        return {
+            "bought": 0,
+            "skipped": len(scan_dict.get("rows") or []),
+            "open_count": len(eng.open_symbols()),
+            "blocked": "SYNTHETIC_SCAN",
+        }
     selects = [r for r in (scan_dict.get("rows") or []) if str(r.get("decision") or "").upper() == "SELECT"]
     if not selects:
         return {"bought": 0, "skipped": 0, "open_count": len(eng.open_symbols())}
@@ -142,18 +152,30 @@ def auto_buy_from_scan(scan_dict):
         LOG.exception("auto_buy")
         return {"error": str(e)}
 
-def seed_demo_local(reset_paper=False):
+def seed_demo_local():
+    """Create visibly synthetic data for an explicitly enabled local demo.
+
+    Demo generation never deletes the paper ledger, and synthetic rows are
+    blocked from automatic order creation by ``auto_buy_from_scan``.
+    """
+    if not DEMO_ENABLED:
+        return {
+            "ok": False,
+            "error": "Demo generation disabled; set ASH08_ENABLE_DEMO=true only in an isolated local demo.",
+            "synthetic": True,
+        }
     if "store" not in MODS or "Metrics" not in MODS or "run_scan" not in MODS:
         return {"ok": False, "error": "modules missing"}
     from datetime import datetime, timezone
-    global _ENGINE
     store = MODS["store"]()
     symbols = list(CORE_SYMBOLS)
     rows = [{"symbol": s, "name": s, "instrument_key": f"NSE_EQ|{s}"} for s in symbols]
     store.save_universe("core", {
         "bucket": "core",
         "asof": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "source": "seed", "count": len(symbols), "symbols": symbols, "rows": rows, "notes": [],
+        "source": "synthetic_demo", "synthetic": True,
+        "count": len(symbols), "symbols": symbols, "rows": rows,
+        "notes": ["Synthetic local demo data; never valid for live or paper decisions."],
     })
     batch = symbols[:80]
     live_map = quotes_for_symbols(batch)
@@ -166,15 +188,11 @@ def seed_demo_local(reset_paper=False):
                                        mom_6m=mom, quality_score=qual, ltp=ltp))
     snap = MODS["run_scan"](metrics, universe_bucket="core")
     scan_dict = snap.to_dict()
+    scan_dict["source"] = "synthetic_demo"
+    scan_dict["synthetic"] = True
     store.save_scan(scan_dict)
-    if reset_paper:
-        p = DATA_DIR / "paper_state.json"
-        if p.exists():
-            try: p.unlink()
-            except Exception: pass
-        _ENGINE = None
     auto = auto_buy_from_scan(scan_dict)
-    return {"ok": True, "core_count": len(symbols), "select": snap.select_count,
+    return {"ok": True, "synthetic": True, "core_count": len(symbols), "select": snap.select_count,
             "watch": snap.watch_count, "reject": snap.reject_count, "auto_paper": auto,
             "live_quote_count": len(live_map), "ltp_source": ("upstox" if live_map else "upstox_failed"),
             "upstox": upstox_status()}
@@ -229,20 +247,23 @@ class Handler(BaseHTTPRequestHandler):
             if "store" not in MODS:
                 return self.json(500, {"ok": False, "error": "store missing"})
             data = MODS["store"]().load_universe("core")
-            if not data or not data.get("symbols"):
-                seed_demo_local()
-                data = MODS["store"]().load_universe("core")
-            return self.json(200, data or {"count": 0, "symbols": []})
+            return self.json(200, data or {
+                "count": 0, "symbols": [], "rows": [], "data_status": "EMPTY",
+                "notes": ["No universe has been loaded."],
+            })
         if path == "/api/scan/latest":
             if "store" not in MODS:
                 return self.json(500, {"ok": False, "error": "store missing"})
             data = MODS["store"]().load_scan()
-            if not data or not data.get("rows"):
-                seed_demo_local()
-                data = MODS["store"]().load_scan()
-            return self.json(200, data or {"rows": []})
-        if path in ("/api/scan/run", "/api/demo/run"):
-            return self.json(200, seed_demo_local(reset_paper=True))
+            return self.json(200, data or {"rows": [], "data_status": "EMPTY"})
+        if path == "/api/scan/run":
+            return self.json(409, {
+                "ok": False,
+                "error": "No live scanner input was supplied; refusing to fabricate scanner metrics.",
+            })
+        if path == "/api/demo/run":
+            result = seed_demo_local()
+            return self.json(200 if result.get("ok") else 403, result)
         if path == "/api/paper/book":
             return self.api_paper_book()
         if path == "/api/pnl/tick":
@@ -261,8 +282,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.json(500, {"ok": False, "error": "store missing"})
             scan = MODS["store"]().load_scan() or {}
             if not scan.get("rows"):
-                seed_demo_local()
-                scan = MODS["store"]().load_scan() or {}
+                return self.json(409, {
+                    "ok": False,
+                    "error": "No scanner rows are available; refusing to seed synthetic candidates.",
+                })
             return self.json(200, {"ok": True, "auto_paper": auto_buy_from_scan(scan), "upstox": upstox_status()})
         return self.serve_static(path)
 
@@ -400,14 +423,13 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(raw)
 
-def main():
+def initialize_runtime():
     DESK.mkdir(parents=True, exist_ok=True)
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    try:
-        seed_demo_local(reset_paper=True)
-    except Exception as e:
-        LOG.warning("seed: %s", e)
-    get_engine()
+    return get_engine()
+
+def main():
+    initialize_runtime()
     LOG.info("ASH08 on 0.0.0.0:%s paper=%s core=%s upstox=%s",
              PORT, "PaperEngine" in MODS, CORE_COUNT, upstox_status().get("detail"))
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
