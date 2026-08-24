@@ -6,18 +6,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .config import (
+    BOOK_VALUE as DEFAULT_BOOK,
+    MAX_HOLD_SESSIONS as MAX_HOLD_DAYS,
+    MAX_NAME_PCT,
+    MAX_OPEN_POSITIONS,
+    STOP_PCT,
+    TARGET_PCT,
+)
+
 LOG = logging.getLogger("ash08.paper")
-MAX_NAME_PCT, DEFAULT_BOOK = 2.5, 5_000_000.0
 EXPOSURE = {"L0": 100.0, "L1": 70.0, "L2": 50.0, "L3": 25.0, "L4": 15.0}
-STOP_PCT, TARGET_PCT, MAX_HOLD_DAYS = 3.0, 6.0, 15
-MAX_OPEN_POSITIONS, DEFAULT_QTY = 10, 50
-REF_LTP = {
-    "TCS": 3840.0, "HDFCBANK": 1690.0, "RELIANCE": 2950.0, "INFY": 1850.0,
-    "ICICIBANK": 1180.0, "SBIN": 820.0, "ITC": 450.0, "MTARTECH": 1850.0,
-    "COCHINSHIP": 1450.0, "HAL": 4200.0, "BEL": 280.0, "LT": 3600.0,
-    "HCLTECH": 1650.0, "WIPRO": 480.0, "AXISBANK": 1100.0, "KOTAKBANK": 1750.0,
-    "TATAMOTORS": 980.0, "MARUTI": 12400.0, "BAJFINANCE": 7100.0, "POWERGRID": 300.0,
-}
+DEFAULT_QTY = 50
 
 
 def _now():
@@ -64,45 +64,45 @@ def _pnl_fields(entry, ltp, qty, exit_price=None, status="OPEN"):
     return out
 
 
-def paper_mark_price(symbol: str, entry: float) -> float:
-    """Deterministic paper mark when live quotes are unavailable.
-    Always applies a stable symbol-hash drift (±2%) on entry so Trade Book
-    P&L is never stuck at 0 in offline / Cloudflare-blocked mode.
-    """
-    sym = (symbol or "").upper()
-    try:
-        entry = float(entry or 0)
-    except Exception:
-        entry = 0.0
-    if entry <= 0:
-        entry = float(REF_LTP.get(sym) or 100.0)
-    # stable drift: -2.0% .. +2.0% (same every reload for a given symbol)
-    h = sum(ord(c) for c in sym) % 41  # 0..40
-    drift = (h - 20) / 1000.0  # -0.020 .. +0.020
-    return round(entry * (1.0 + drift), 2)
-
-
 @dataclass
 class GovState:
     level: str
     exposure_pct: float
     rationale: str
+    verified: bool = False
+    evidence_complete: bool = False
+    evidence_fresh: bool = False
 
     def to_dict(self):
         return asdict(self)
 
 
-def evaluate_governor(damage=False, q10=False, sell=False, any_fii=False) -> GovState:
+def evaluate_governor(
+    damage=False,
+    q10=False,
+    sell=False,
+    any_fii=False,
+    evidence_complete=False,
+    evidence_fresh=False,
+) -> GovState:
+    verified = bool(evidence_complete and evidence_fresh)
     confirms = sum([q10, sell, any_fii])
     if damage and q10 and sell:
-        return GovState("L4_EXTREME", EXPOSURE["L4"], "Q10+sell")
-    if damage and confirms >= 2:
-        return GovState("L3_HIGH_SEVERITY", EXPOSURE["L3"], ">=2 FII")
-    if damage and confirms == 1:
-        return GovState("L2_CONFIRMED", EXPOSURE["L2"], "1 FII")
-    if damage:
-        return GovState("L1_DAMAGE_ONLY", EXPOSURE["L1"], "damage")
-    return GovState("L0_NORMAL", EXPOSURE["L0"], "normal")
+        state = GovState("L4", EXPOSURE["L4"], "Q10+sell")
+    elif damage and confirms >= 2:
+        state = GovState("L3", EXPOSURE["L3"], ">=2 FII")
+    elif damage and confirms == 1:
+        state = GovState("L2", EXPOSURE["L2"], "1 FII")
+    elif damage:
+        state = GovState("L1", EXPOSURE["L1"], "damage")
+    else:
+        state = GovState("L0", EXPOSURE["L0"], "normal")
+    state.verified = verified
+    state.evidence_complete = bool(evidence_complete)
+    state.evidence_fresh = bool(evidence_fresh)
+    if not verified:
+        state.rationale += "; evidence unverified"
+    return state
 
 
 class PaperEngine:
@@ -110,7 +110,7 @@ class PaperEngine:
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.book_value = book_value
-        self.governor = GovState("L0_NORMAL", 100.0, "init")
+        self.governor = GovState("L0", 100.0, "init")
         self.orders, self.positions = [], []
         self._load()
 
@@ -131,13 +131,28 @@ class PaperEngine:
                 str(g.get("level")),
                 float(g.get("exposure_pct") or 100),
                 str(g.get("rationale") or ""),
+                bool(g.get("verified")),
+                bool(g.get("evidence_complete")),
+                bool(g.get("evidence_fresh")),
             )
 
-    def size_qty(self, qty, price):
+    def size_qty(self, symbol, qty, price):
         if price is None or price <= 0 or qty is None or qty <= 0:
-            return 0
+            return {"qty": 0, "requested_qty": qty, "name_headroom": 0.0}
         max_n = self.book_value * (MAX_NAME_PCT / 100) * (self.governor.exposure_pct / 100)
-        return max(0, min(int(qty), int(max_n // price)))
+        current_n = sum(
+            float(p.get("entry") or 0) * int(p.get("qty") or 0)
+            for p in self.positions
+            if p.get("status") == "OPEN" and str(p.get("symbol") or "").upper() == str(symbol or "").upper()
+        )
+        headroom = max(0.0, max_n - current_n)
+        sized = max(0, min(int(qty), int(headroom // price)))
+        return {
+            "qty": sized,
+            "requested_qty": int(qty),
+            "name_headroom": round(headroom, 2),
+            "max_name_notional": round(max_n, 2),
+        }
 
     def place_order(
         self,
@@ -151,8 +166,55 @@ class PaperEngine:
         hold_days=None,
         source="manual",
         score=None,
+        idempotency_key=None,
     ):
-        sized = self.size_qty(qty, fill_price)
+        symbol = str(symbol or "").strip().upper()
+        side = str(side or "").strip().upper()
+        idempotency_key = str(idempotency_key or "").strip() or None
+        if idempotency_key:
+            for existing in self.orders:
+                if existing.get("idempotency_key") == idempotency_key:
+                    return existing
+        try:
+            requested_qty = int(qty)
+            fill_price = float(fill_price)
+        except (TypeError, ValueError):
+            requested_qty = 0
+            fill_price = 0.0
+        reason = None
+        sizing = {"qty": 0, "requested_qty": requested_qty, "name_headroom": 0.0}
+        if not symbol:
+            reason = "SYMBOL_REQUIRED"
+        elif side not in {"BUY", "SELL"}:
+            reason = "INVALID_SIDE"
+        elif requested_qty <= 0:
+            reason = "INVALID_QUANTITY"
+        elif fill_price <= 0:
+            reason = "INVALID_FILL_PRICE"
+        elif side == "BUY":
+            if self.open_count() >= MAX_OPEN_POSITIONS:
+                reason = "MAX_OPEN_REACHED"
+            else:
+                sizing = self.size_qty(symbol, requested_qty, fill_price)
+                if sizing["qty"] <= 0:
+                    reason = "POSITION_SIZE_ZERO"
+        else:
+            available = sum(
+                int(p.get("qty") or 0)
+                for p in self.positions
+                if p.get("status") == "OPEN" and str(p.get("symbol") or "").upper() == symbol
+            )
+            if available <= 0:
+                reason = "NO_OPEN_POSITION"
+            elif requested_qty > available:
+                reason = "INSUFFICIENT_POSITION"
+            else:
+                sizing = {
+                    "qty": requested_qty,
+                    "requested_qty": requested_qty,
+                    "name_headroom": 0.0,
+                }
+        sized = sizing["qty"]
         if stop is None and fill_price:
             stop = round(fill_price * (1 - STOP_PCT / 100), 2)
         if target is None and fill_price:
@@ -163,7 +225,7 @@ class PaperEngine:
             "order_id": _id("ord"),
             "symbol": symbol,
             "side": side,
-            "qty": qty,
+            "qty": requested_qty,
             "sized_qty": sized,
             "fill_price": fill_price,
             "stop": stop,
@@ -171,7 +233,10 @@ class PaperEngine:
             "hold_days": hold,
             "source": source,
             "score": score,
-            "status": "FILLED" if sized else "REJECTED",
+            "status": "FILLED" if sized and not reason else "REJECTED",
+            "reason": reason,
+            "idempotency_key": idempotency_key,
+            "sizing": sizing,
             "governor": self.governor.to_dict(),
             "created_at": opened,
             "exit_plan": {
@@ -182,7 +247,7 @@ class PaperEngine:
             },
         }
         self.orders.append(order)
-        if sized and side == "BUY":
+        if order["status"] == "FILLED" and side == "BUY":
             pnl = _pnl_fields(fill_price, fill_price, sized, status="OPEN")
             self.positions.append(
                 {
@@ -212,11 +277,54 @@ class PaperEngine:
                     "unrealized_pct": pnl.get("unrealized_pct", 0.0),
                 }
             )
+        elif order["status"] == "FILLED" and side == "SELL":
+            remaining = sized
+            for position in list(self.positions):
+                if remaining <= 0:
+                    break
+                if position.get("status") != "OPEN" or str(position.get("symbol") or "").upper() != symbol:
+                    continue
+                held_qty = int(position.get("qty") or 0)
+                sold_qty = min(held_qty, remaining)
+                remaining -= sold_qty
+                if sold_qty == held_qty:
+                    closed_position = position
+                else:
+                    closed_position = dict(position)
+                    closed_position["position_id"] = _id("pos")
+                    closed_position["qty"] = sold_qty
+                    position["qty"] = held_qty - sold_qty
+                    position.update(
+                        _pnl_fields(
+                            position.get("entry"),
+                            position.get("ltp"),
+                            position.get("qty"),
+                            status="OPEN",
+                        )
+                    )
+                    self.positions.append(closed_position)
+                closed_position["status"] = "CLOSED"
+                closed_position["exit_reason"] = "MANUAL_SELL"
+                closed_position["exit_price"] = fill_price
+                closed_position["closed_at"] = opened
+                closed_position["ltp"] = fill_price
+                closed_position.update(
+                    _pnl_fields(
+                        closed_position.get("entry"),
+                        fill_price,
+                        sold_qty,
+                        fill_price,
+                        "CLOSED",
+                    )
+                )
         self._save()
         return order
 
     def open_symbols(self):
         return {p["symbol"] for p in self.positions if p.get("status") == "OPEN"}
+
+    def open_count(self):
+        return sum(1 for p in self.positions if p.get("status") == "OPEN")
 
     def refresh_hold_days(self):
         now = datetime.now(timezone.utc)
@@ -243,12 +351,8 @@ class PaperEngine:
         if changed:
             self._save()
 
-    def mark_to_market(self, price_map=None, use_paper_marks=True):
-        """Update LTP + P&L for all positions.
-        price_map: live quotes when available.
-        use_paper_marks: if True and no live price, use deterministic drift
-                         so P&L is never stuck at 0 in paper mode.
-        """
+    def mark_to_market(self, price_map=None, use_paper_marks=False):
+        """Update P&L only from supplied marks; never manufacture a price."""
         price_map = price_map or {}
         for p in self.positions:
             sym = str(p.get("symbol") or "").upper()
@@ -260,8 +364,6 @@ class PaperEngine:
                 )
                 continue
             ltp = price_map.get(sym)
-            if ltp is None and use_paper_marks:
-                ltp = paper_mark_price(sym, p.get("entry") or 0)
             if ltp is None:
                 ltp = p.get("ltp") or p.get("entry")
             try:
@@ -284,6 +386,26 @@ class PaperEngine:
             p.update(fields)
         self.refresh_hold_days()
         self._save()
+
+    def process_marks(self, price_map=None):
+        price_map = price_map or {}
+        valid = {}
+        for symbol, value in price_map.items():
+            try:
+                mark = float(value)
+            except (TypeError, ValueError):
+                continue
+            if mark > 0:
+                valid[str(symbol).upper()] = mark
+        marked = sum(
+            1
+            for position in self.positions
+            if position.get("status") == "OPEN"
+            and str(position.get("symbol") or "").upper() in valid
+        )
+        self.mark_to_market(valid, use_paper_marks=False)
+        open_count = self.open_count()
+        return {"marked": marked, "missing": max(0, open_count - marked), "open_count": open_count}
 
     def update_ltp(self, symbol, ltp):
         self.mark_to_market({str(symbol).upper(): float(ltp)}, use_paper_marks=False)
@@ -318,11 +440,18 @@ class PaperEngine:
             if sym in already:
                 skipped.append({"symbol": sym, "reason": "already_open"})
                 continue
-            price = price_map.get(sym) or row.get("ltp") or REF_LTP.get(sym) or 100.0
+            price = price_map.get(sym)
+            if price is None:
+                skipped.append({"symbol": sym, "reason": "missing_live_price"})
+                continue
             try:
                 price = float(price)
             except Exception:
-                price = 100.0
+                skipped.append({"symbol": sym, "reason": "invalid_live_price"})
+                continue
+            if price <= 0:
+                skipped.append({"symbol": sym, "reason": "invalid_live_price"})
+                continue
             order = self.place_order(
                 symbol=sym,
                 side="BUY",
@@ -338,9 +467,7 @@ class PaperEngine:
                 bought.append(order)
             else:
                 skipped.append({"symbol": sym, "reason": "rejected_size"})
-        mtm = dict(REF_LTP)
-        mtm.update(price_map)
-        self.mark_to_market(mtm, use_paper_marks=True)
+        self.mark_to_market(price_map, use_paper_marks=False)
         return {
             "bought": len(bought),
             "skipped": len(skipped),
@@ -357,9 +484,9 @@ class PaperEngine:
         }
 
     def book_payload(self, live_prices=None):
-        """Always recompute marks. live_prices from Upstox when available; else paper marks."""
+        """Recompute P&L from supplied Upstox prices without synthetic marks."""
         live_prices = live_prices or {}
-        self.mark_to_market(live_prices, use_paper_marks=True)
+        self.mark_to_market(live_prices, use_paper_marks=False)
         opens = [p for p in self.positions if p.get("status") == "OPEN"]
         closed = [p for p in self.positions if p.get("status") != "OPEN"]
         unreal = round(sum(float(p.get("unrealized_pnl") if p.get("unrealized_pnl") is not None else p.get("pnl") or 0) for p in opens), 2)

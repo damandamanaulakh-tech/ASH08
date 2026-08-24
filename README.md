@@ -49,6 +49,11 @@ Secrets such as Upstox and Supabase credentials must be configured only in Rende
 
 Core scanning remains blocked until real point-in-time ADV20, turnover, momentum, quality, correlation, and freshness evidence is populated. ASH08 does not invent missing metrics, prices, fills, or profits.
 
+Paper orders are idempotent when an `idempotency_key` is supplied. Manual and
+automatic buys share the same ten-position and per-name sizing gates. Automatic
+buys require an explicit live price, sells cannot exceed open inventory, and
+P&L remains unchanged when no new Upstox mark is available.
+
 ## Main components
 
 | Path | Role |

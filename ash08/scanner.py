@@ -9,10 +9,19 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
+from .config import (
+    ADV20_MIN,
+    CORR_MAX,
+    MOM_MIN,
+    MOM_WEIGHT,
+    QUAL_WEIGHT,
+    SCORE_SELECT,
+    SCORE_WATCH,
+    STALE_MAX_DAYS,
+    TURNOVER_CR_MIN,
+)
+
 LOG = logging.getLogger("ash08.scanner")
-ADV20_MIN, TURNOVER_CR_MIN, STALE_MAX_DAYS = 200_000, 5.0, 7
-MOM_MIN, SCORE_SELECT, SCORE_WATCH, CORR_MAX = 0.0, 70.0, 55.0, 0.85
-MOM_WEIGHT, QUAL_WEIGHT = 0.65, 0.35
 
 
 @dataclass
@@ -45,6 +54,7 @@ class ScanRow:
     reason: str = ""
     hits: List[ParamHit] = field(default_factory=list)
     hard_pass: bool = False
+    coverage: float = 0.0
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -58,6 +68,7 @@ class ScanSnapshot:
     select_count: int
     watch_count: int
     reject_count: int
+    unknown_count: int
     rows: List[Dict[str, Any]] = field(default_factory=list)
     notes: List[str] = field(default_factory=list)
 
@@ -79,22 +90,37 @@ def compute_final_score(mom_6m, quality_score):
     return round(MOM_WEIGHT * mom_s + QUAL_WEIGHT * qual, 2)
 
 
-def evaluate_stock(m: StockMetrics) -> ScanRow:
+def evaluate_stock(m: StockMetrics, require_metrics: bool = True) -> ScanRow:
     hits: List[ParamHit] = []
-    adv_ok = True if m.adv20 is None else m.adv20 >= ADV20_MIN
+    mandatory = {
+        "adv20": m.adv20,
+        "turnover_cr_5d": m.turnover_cr_5d,
+        "stale_days": m.stale_days,
+        "mom_6m": m.mom_6m,
+        "quality_score": m.quality_score,
+        "max_corr_vs_book": m.max_corr_vs_book,
+    }
+    missing = [name for name, value in mandatory.items() if value is None]
+    coverage = round((len(mandatory) - len(missing)) / len(mandatory), 4)
+    adv_ok = m.adv20 is not None and m.adv20 >= ADV20_MIN
     hits.append(ParamHit("P-ADV20", adv_ok, f"adv20={m.adv20}"))
-    t_ok = True if m.turnover_cr_5d is None else m.turnover_cr_5d >= TURNOVER_CR_MIN
+    t_ok = m.turnover_cr_5d is not None and m.turnover_cr_5d >= TURNOVER_CR_MIN
     hits.append(ParamHit("P-TURNOVER", t_ok, f"to={m.turnover_cr_5d}"))
-    s_ok = True if m.stale_days is None else m.stale_days <= STALE_MAX_DAYS
+    s_ok = m.stale_days is not None and m.stale_days <= STALE_MAX_DAYS
     hits.append(ParamHit("P-STALE", s_ok, f"stale={m.stale_days}"))
-    mom_ok = True if m.mom_6m is None else m.mom_6m > MOM_MIN
+    mom_ok = m.mom_6m is not None and m.mom_6m > MOM_MIN
     hits.append(ParamHit("P-MOM", mom_ok, f"mom={m.mom_6m}"))
-    c_ok = True if m.max_corr_vs_book is None else m.max_corr_vs_book <= CORR_MAX
+    qual_ok = m.quality_score is not None
+    hits.append(ParamHit("P-QUALITY", qual_ok, f"quality={m.quality_score}"))
+    c_ok = m.max_corr_vs_book is not None and m.max_corr_vs_book <= CORR_MAX
     hits.append(ParamHit("P-CORR", c_ok, f"corr={m.max_corr_vs_book}"))
-    hard = adv_ok and t_ok and s_ok and mom_ok and c_ok
+    hard = adv_ok and t_ok and s_ok and mom_ok and qual_ok and c_ok
     score = compute_final_score(m.mom_6m, m.quality_score)
     hits.append(ParamHit("P-SCORE", True, f"score={score}"))
-    if hard and score >= SCORE_SELECT:
+    if require_metrics and missing:
+        decision, reason = "UNKNOWN", "missing mandatory metrics: " + ", ".join(missing)
+        hard = False
+    elif hard and score >= SCORE_SELECT:
         decision, reason = "SELECT", f"score {score} >= {SCORE_SELECT}"
     elif hard and score >= SCORE_WATCH:
         decision, reason = "WATCH", f"score {score} in watch band"
@@ -109,19 +135,20 @@ def evaluate_stock(m: StockMetrics) -> ScanRow:
         reason=reason,
         hits=hits,
         hard_pass=hard,
+        coverage=coverage,
     )
 
 
 def run_scan(
     metrics: Sequence[StockMetrics],
     universe_bucket: str = "core",
-    require_metrics: bool = False,
+    require_metrics: bool = True,
 ) -> ScanSnapshot:
-    rows = [evaluate_stock(m) for m in metrics]
+    rows = [evaluate_stock(m, require_metrics=require_metrics) for m in metrics]
     rows_sorted = sorted(
         rows,
         key=lambda r: (
-            0 if r.decision == "SELECT" else 1 if r.decision == "WATCH" else 2,
+            0 if r.decision == "SELECT" else 1 if r.decision == "WATCH" else 2 if r.decision == "UNKNOWN" else 3,
             -r.score,
             r.symbol,
         ),
@@ -133,6 +160,7 @@ def run_scan(
         select_count=sum(1 for r in rows_sorted if r.decision == "SELECT"),
         watch_count=sum(1 for r in rows_sorted if r.decision == "WATCH"),
         reject_count=sum(1 for r in rows_sorted if r.decision == "REJECT"),
+        unknown_count=sum(1 for r in rows_sorted if r.decision == "UNKNOWN"),
         rows=[r.to_dict() for r in rows_sorted],
         notes=[f"SCORE_SELECT={SCORE_SELECT}", f"SCORE_WATCH={SCORE_WATCH}"],
     )
