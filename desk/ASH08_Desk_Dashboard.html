@@ -120,7 +120,7 @@ table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:9px 10px;
 <div class="note" onclick="selectNote(this,'mom')"><strong>P-MOM</strong><em>6M > 0</em></div>
 <div class="note" onclick="selectNote(this,'score')"><strong>P-SCORE</strong><em>0.65/0.35</em></div>
 <div class="note" onclick="selectNote(this,'corr')"><strong>P-CORR</strong><em>≤ 0.85</em></div>
-<div class="note" onclick="selectNote(this,'select')"><strong>P-SELECT</strong><em>≥ 70 auto-buy</em></div>
+<div class="note" onclick="selectNote(this,'select')"><strong>P-SELECT</strong><em id="p-select-value">—</em></div>
 <div class="note" onclick="selectNote(this,'gov')"><strong>P-GOV</strong><em>L0–L4</em></div>
 </div></div>
 <div class="card"><h4 id="noteTitle">P-ADV20</h4><p class="muted" id="noteBody">ADV20 ≥ 200,000</p></div>
@@ -159,7 +159,7 @@ table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:9px 10px;
 <div class="row"><span class="muted">LTP source</span><strong id="plan-ltpsrc">—</strong></div></div>
 <div class="card"><h4>Live</h4>
 <div class="row"><span class="muted">Open</span><strong id="plan-open">0</strong></div>
-<div class="row"><span class="muted">Max open</span><strong>10</strong></div>
+<div class="row"><span class="muted">Max open</span><strong id="plan-max-open">—</strong></div>
 <div class="row"><span class="muted">Source</span><strong>auto_select</strong></div></div>
 </div>
 <p class="muted" style="margin:0 0 10px;font-size:12px"><b>Open</b> = live holdings · <b>Order history FILLED</b> = buy tickets only</p>
@@ -215,7 +215,7 @@ table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:9px 10px;
 <script>
 function showView(id){document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));const v=document.getElementById('view-'+id);if(v)v.classList.add('active');const b=document.querySelector('nav button[data-view="'+id+'"]');if(b)b.classList.add('active');if(id==='positions'||id==='home')loadBook();if(id==='watchlist')loadWatch();}
 document.querySelectorAll('nav button').forEach(btn=>btn.addEventListener('click',()=>showView(btn.dataset.view)));
-const NOTE={adv:{t:'P-ADV20',b:'ADV20 ≥ 200,000'},turn:{t:'P-TURNOVER',b:'5D ≥ ₹5 Cr'},stale:{t:'P-STALE',b:'≤ 7 days'},mom:{t:'P-MOM',b:'6M > 0'},score:{t:'P-SCORE',b:'0.65×mom+0.35×qual'},corr:{t:'P-CORR',b:'≤ 0.85'},select:{t:'P-SELECT',b:'≥ 67 → eligible for paper review'},gov:{t:'P-GOV',b:'L0–L4'}};
+const NOTE={adv:{t:'P-ADV20',b:'ADV20 requires configured evidence'},turn:{t:'P-TURNOVER',b:'Turnover requires configured evidence'},stale:{t:'P-STALE',b:'Freshness requires configured evidence'},mom:{t:'P-MOM',b:'Momentum requires configured evidence'},score:{t:'P-SCORE',b:'Configured momentum/quality weights'},corr:{t:'P-CORR',b:'Correlation requires configured evidence'},select:{t:'P-SELECT',b:'Configured SELECT threshold'},gov:{t:'P-GOV',b:'L0–L4'}};
 function selectNote(el,id){document.querySelectorAll('.note').forEach(n=>n.classList.remove('active'));el.classList.add('active');document.getElementById('noteTitle').textContent=NOTE[id].t;document.getElementById('noteBody').textContent=NOTE[id].b;}
 function h(value){return String(value==null?'':value).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
 function mutationToken(){let token=sessionStorage.getItem('ash08ApiToken')||'';if(!token){token=(prompt('ASH08 API token')||'').trim();if(token)sessionStorage.setItem('ash08ApiToken',token);}return token;}
@@ -239,11 +239,11 @@ const up=d.unrealized_pnl!=null?((d.unrealized_pnl>=0?'+':'')+d.unrealized_pnl):
 const rp=d.realized_pnl!=null?((d.realized_pnl>=0?'+':'')+d.realized_pnl):'—';
 if(document.getElementById('plan-upnl'))document.getElementById('plan-upnl').textContent=up;
 if(document.getElementById('plan-rpnl'))document.getElementById('plan-rpnl').textContent=rp;
-if(document.getElementById('plan-ltpsrc'))document.getElementById('plan-ltpsrc').textContent=d.ltp_source||'ref_seed';
-if(document.getElementById('home-ltpsrc'))document.getElementById('home-ltpsrc').textContent=d.ltp_source||'ref_seed';
+if(document.getElementById('plan-ltpsrc'))document.getElementById('plan-ltpsrc').textContent=d.ltp_source||'unavailable';
+if(document.getElementById('home-ltpsrc'))document.getElementById('home-ltpsrc').textContent=d.ltp_source||'unavailable';
 if(document.getElementById('kpi-upnl'))document.getElementById('kpi-upnl').textContent='P&L '+up;
 if(d.upstox){const el=document.getElementById('upx-pill');if(el)el.textContent=d.upstox.connected?'Upstox OK':(d.upstox.token_set?'Upstox token':'Upstox off');}
-if(d.plan){if(d.plan.stop_pct!=null)document.getElementById('plan-stop').textContent='-'+d.plan.stop_pct+'%';if(d.plan.target_pct!=null)document.getElementById('plan-target').textContent='+'+d.plan.target_pct+'%';if(d.plan.max_hold_days!=null)document.getElementById('plan-hold').textContent=d.plan.max_hold_days+'d';}
+if(d.plan){if(d.plan.stop_pct!=null)document.getElementById('plan-stop').textContent='-'+d.plan.stop_pct+'%';if(d.plan.target_pct!=null)document.getElementById('plan-target').textContent='+'+d.plan.target_pct+'%';if(d.plan.max_hold_days!=null)document.getElementById('plan-hold').textContent=d.plan.max_hold_days+'d';if(d.plan.max_open!=null)document.getElementById('plan-max-open').textContent=d.plan.max_open;}
 if(d.governor){const lvl=(d.governor.level||'L0').split('_')[0];document.getElementById('kpi-gov').textContent=lvl;document.getElementById('gov-level').textContent=d.governor.level||'L0';document.getElementById('gov-pill').textContent='Gov '+lvl;const exp=d.governor.exposure_pct!=null?d.governor.exposure_pct:100;document.getElementById('gov-exp').textContent=exp+'%';document.getElementById('gov-bar').style.width=exp+'%';}
 const opens=d.open||[];const posBody=document.getElementById('pos-body');const homePos=document.getElementById('home-pos');
 if(!opens.length){posBody.innerHTML='<tr><td colspan="9" class="muted" style="text-align:center;padding:18px">No open positions</td></tr>';homePos.innerHTML='<tr><td colspan="3" class="muted" style="text-align:center;padding:16px">No opens</td></tr>';}
@@ -257,7 +257,8 @@ if(!closed.length)closedBody.innerHTML='<tr><td colspan="5" class="muted" style=
 else closedBody.innerHTML=closed.slice().reverse().slice(0,20).map(p=>{const pnl=p.pnl_label||(p.pnl!=null?((p.pnl>=0?'+':'')+p.pnl):'—');return '<tr><td><strong>'+h(p.symbol)+'</strong></td><td>'+h(p.entry)+'</td><td>'+h(p.exit_price!=null?p.exit_price:'—')+'</td><td>'+h(pnl)+'</td><td>'+h(p.exit_reason||'—')+'</td></tr>';}).join('');
 }catch(e){}}
 async function runAuto(){try{const r=await mutate('/api/paper/auto');const d=await r.json();if(!d.ok)throw new Error(d.error||(d.auto_paper&&d.auto_paper.blocked)||'Auto-buy failed');await loadBook();alert('Auto-buy: '+((d.auto_paper&&d.auto_paper.bought)||0)+' new (skips already open)');}catch(e){alert(String(e));}}
-async function boot(){try{const r=await fetch('/api/health');const d=await r.json();if(d.paper_open!=null){document.getElementById('kpi-open').textContent=d.paper_open;document.getElementById('ft-open').textContent='Open '+d.paper_open;}const ux=d.upstox||{};document.getElementById('upx-pill').textContent=ux.connected?'Upstox OK':(ux.token_set||d.upstox_token_set)?'Upstox token':'Upstox off';}catch(e){}try{const u=await fetch('/api/universe/core');const ud=await u.json();if(ud.count){document.getElementById('kpi-core').textContent=ud.count;document.getElementById('uni-core').textContent=ud.count;document.getElementById('ft-core').textContent='Core '+ud.count;}}catch(e){}await loadScan();await loadBook();}
+async function loadConfig(){try{const r=await fetch('/api/config');const d=await r.json();const c=d.config||{},s=c.scanner||{};if(s.score_select!=null){document.getElementById('p-select-value').textContent='≥ '+s.score_select+' review';NOTE.select.b='≥ '+s.score_select+' → eligible for paper review';}if(s.adv20_min!=null)NOTE.adv.b='ADV20 ≥ '+s.adv20_min;if(s.turnover_cr_min!=null)NOTE.turn.b='5D ≥ ₹'+s.turnover_cr_min+' Cr';if(s.stale_max_days!=null)NOTE.stale.b='≤ '+s.stale_max_days+' days';if(s.mom_min!=null)NOTE.mom.b='6M > '+s.mom_min;if(s.corr_max!=null)NOTE.corr.b='≤ '+s.corr_max;if(s.mom_weight!=null&&s.quality_weight!=null)NOTE.score.b=s.mom_weight+'×mom + '+s.quality_weight+'×qual';if(c.max_open_positions!=null)document.getElementById('plan-max-open').textContent=c.max_open_positions;}catch(e){}}
+async function boot(){await loadConfig();try{const r=await fetch('/api/health');const d=await r.json();if(d.paper_open!=null){document.getElementById('kpi-open').textContent=d.paper_open;document.getElementById('ft-open').textContent='Open '+d.paper_open;}const ux=d.upstox||{};document.getElementById('upx-pill').textContent=ux.connected?'Upstox OK':(ux.token_set||d.upstox_token_set)?'Upstox token':'Upstox off';}catch(e){}try{const u=await fetch('/api/universe/core');const ud=await u.json();if(ud.count){document.getElementById('kpi-core').textContent=ud.count;document.getElementById('uni-core').textContent=ud.count;document.getElementById('ft-core').textContent='Core '+ud.count;}}catch(e){}await loadScan();await loadBook();}
 boot();
 </script>
 </body>

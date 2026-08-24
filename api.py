@@ -407,6 +407,8 @@ class Handler(BaseHTTPRequestHandler):
                 },
                 "note": "Upstox ONLY for LTP. Token must work from this host.",
             })
+        if path == "/api/config":
+            return self.json(200, {"ok": True, "config": CONFIG.public_config()})
         if path == "/api/universe/core":
             if "store" not in MODS:
                 return self.json(500, {"ok": False, "error": "store missing"})

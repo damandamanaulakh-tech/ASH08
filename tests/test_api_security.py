@@ -43,6 +43,15 @@ class ApiSecurityTests(unittest.TestCase):
         self.assertEqual(status, 405)
         self.assertEqual(headers.get("Allow"), "POST")
 
+    def test_public_config_exposes_the_same_reviewed_runtime_values(self):
+        status, raw, _ = self.request("/api/config")
+        payload = json.loads(raw)
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["config"]["book_value"], 5_000_000)
+        self.assertEqual(payload["config"]["max_open_positions"], 10)
+        self.assertEqual(payload["config"]["scanner"]["score_select"], 67)
+        self.assertEqual(payload["config"]["scanner"]["score_watch"], 60)
+
     def test_mutation_requires_configured_valid_token(self):
         with patch.object(api.CONFIG, "API_TOKEN", ""):
             status, _, _ = self.request("/api/scan/run", method="POST", data={})
@@ -77,6 +86,9 @@ class ApiSecurityTests(unittest.TestCase):
         dashboard = (Path(api.ROOT) / "desk" / "ASH08_Desk_Dashboard.html").read_text(encoding="utf-8")
         self.assertIn("function h(value)", dashboard)
         self.assertNotIn("onclick=\\'openDetail(", dashboard)
+        self.assertNotIn("≥ 70 auto-buy", dashboard)
+        self.assertNotIn("ref_seed", dashboard)
+        self.assertIn("fetch('/api/config')", dashboard)
 
 
 if __name__ == "__main__":
