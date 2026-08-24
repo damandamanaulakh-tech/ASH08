@@ -10,6 +10,7 @@ from threading import RLock
 from urllib.parse import unquote, urlparse
 
 from ash08 import config as CONFIG
+from ash08.upstox_client import is_exact_nse_equity_key
 
 ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
@@ -22,6 +23,9 @@ DATA_DIR = CONFIG.DATA_DIR
 DEMO_ENABLED = CONFIG.ALLOW_DEMO
 SYMBOL_RE = re.compile(r"^[A-Z0-9&.-]{1,30}$")
 _ENGINE_LOCK = RLock()
+_INSTRUMENT_LOCK = RLock()
+_INSTRUMENT_KEYS = {}
+_INSTRUMENT_MASTER_LOADED = False
 _RATE_LOCK = RLock()
 _REQUEST_TIMES = defaultdict(deque)
 REF_LTP = {
@@ -115,13 +119,24 @@ def quotes_for_symbols(symbols, prefer_live=True):
     if not (os.environ.get("UPSTOX_ACCESS_TOKEN") or "").strip():
         LOG.warning("upstox quotes: UPSTOX_ACCESS_TOKEN missing")
         return {}
-    keys = [f"NSE_EQ|{s}" for s in toks]
+    key_map = instrument_keys_for_symbols(toks)
+    keys = [key_map[symbol] for symbol in toks if symbol in key_map]
+    missing = [symbol for symbol in toks if symbol not in key_map]
+    if missing:
+        LOG.warning("upstox quotes: exact instrument keys missing for %s", missing[:10])
+    if not keys:
+        return {}
+    reverse_keys = {key.upper(): symbol for symbol, key in key_map.items()}
     try:
         raw = MODS["fetch_quotes"](keys)
         for k, v in (raw or {}).items():
             if not isinstance(v, dict):
                 continue
-            sym = k.split("|")[-1] if "|" in k else k
+            normalized_key = str(k or "").strip().upper().replace(":", "|", 1)
+            value_key = str(v.get("instrument_key") or v.get("instrument_token") or "").strip().upper()
+            sym = reverse_keys.get(normalized_key) or reverse_keys.get(value_key)
+            if not sym:
+                continue
             lp = v.get("last_price") or v.get("lastPrice")
             if lp is None and isinstance(v.get("ohlc"), dict):
                 lp = v["ohlc"].get("close")
@@ -133,6 +148,43 @@ def quotes_for_symbols(symbols, prefer_live=True):
     except Exception as e:
         LOG.warning("upstox quotes: %s", e)
     return out
+
+
+def instrument_keys_for_symbols(symbols):
+    global _INSTRUMENT_MASTER_LOADED
+    requested = {str(symbol or "").strip().upper() for symbol in symbols if symbol}
+    if not requested:
+        return {}
+    with _INSTRUMENT_LOCK:
+        if "store" in MODS:
+            try:
+                store = MODS["store"]()
+                for bucket in ("core", "discovery"):
+                    snapshot = store.load_universe(bucket) or {}
+                    for row in snapshot.get("rows") or []:
+                        symbol = str(row.get("symbol") or "").strip().upper()
+                        key = str(row.get("instrument_key") or "").strip().upper()
+                        if symbol and is_exact_nse_equity_key(key):
+                            _INSTRUMENT_KEYS[symbol] = key
+            except Exception as error:
+                LOG.warning("instrument key store lookup: %s", error)
+        unresolved = requested.difference(_INSTRUMENT_KEYS)
+        if unresolved and not _INSTRUMENT_MASTER_LOADED and "fetch_nse" in MODS:
+            try:
+                for row in MODS["fetch_nse"]() or []:
+                    symbol = str(row.get("symbol") or row.get("trading_symbol") or "").strip().upper()
+                    key = str(row.get("instrument_key") or "").strip().upper()
+                    if symbol and is_exact_nse_equity_key(key):
+                        _INSTRUMENT_KEYS[symbol] = key
+            except Exception as error:
+                LOG.warning("instrument master lookup: %s", error)
+            finally:
+                _INSTRUMENT_MASTER_LOADED = True
+        return {
+            symbol: _INSTRUMENT_KEYS[symbol]
+            for symbol in requested
+            if symbol in _INSTRUMENT_KEYS
+        }
 
 def auto_buy_from_scan(scan_dict):
     eng = get_engine()
@@ -179,7 +231,7 @@ def seed_demo_local():
     from datetime import datetime, timezone
     store = MODS["store"]()
     symbols = list(CORE_SYMBOLS)
-    rows = [{"symbol": s, "name": s, "instrument_key": f"NSE_EQ|{s}"} for s in symbols]
+    rows = [{"symbol": s, "name": s, "instrument_key": ""} for s in symbols]
     store.save_universe("core", {
         "bucket": "core",
         "asof": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),

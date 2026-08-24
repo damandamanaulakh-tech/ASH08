@@ -53,6 +53,11 @@ keeps the value in session storage only and sends it as `X-ASH08-Token`.
 
 Core scanning remains blocked until real point-in-time ADV20, turnover, momentum, quality, correlation, and freshness evidence is populated. ASH08 does not invent missing metrics, prices, fills, or profits.
 
+Upstox quote requests use only exact `NSE_EQ|<ISIN>` keys obtained from the
+instrument master or a persisted universe row. Symbol-derived keys such as
+`NSE_EQ|TCS` are rejected, and missing ADV20 or turnover excludes a stock from
+Core instead of passing it through.
+
 Paper orders are idempotent when an `idempotency_key` is supplied. Manual and
 automatic buys share the same ten-position and per-name sizing gates. Automatic
 buys require an explicit live price, sells cannot exceed open inventory, and

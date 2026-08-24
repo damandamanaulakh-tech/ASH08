@@ -6,13 +6,20 @@ import io
 import json
 import logging
 import os
+import re
 import urllib.error
 import urllib.request
+from urllib.parse import quote
 from typing import Any, Dict, List
 
 LOG = logging.getLogger("ash08.upstox")
 NSE_INSTRUMENTS_URL = "https://assets.upstox.com/market-quote/instruments/exchange/NSE.json.gz"
 API_BASE = "https://api.upstox.com/v2"
+NSE_EQUITY_KEY_RE = re.compile(r"^NSE_EQ\|IN[A-Z0-9]{10}$")
+
+
+def is_exact_nse_equity_key(value: Any) -> bool:
+    return bool(NSE_EQUITY_KEY_RE.fullmatch(str(value or "").strip().upper()))
 
 
 def _token() -> str:
@@ -59,11 +66,13 @@ def fetch_nse_equity_instruments() -> List[Dict[str, Any]]:
         if not sym or sym in seen:
             continue
         key = str(r.get("instrument_key") or r.get("instrumentKey") or "")
+        if not is_exact_nse_equity_key(key):
+            continue
         seen.add(sym)
         out.append({
             "symbol": sym,
             "name": str(r.get("name") or sym),
-            "instrument_key": key or f"NSE_EQ|{sym}",
+            "instrument_key": key,
             "isin": str(r.get("isin") or ""),
             "lot_size": int(r.get("lot_size") or r.get("lotSize") or 1),
             "tick_size": float(r.get("tick_size") or r.get("tickSize") or 0.05),
@@ -76,11 +85,15 @@ def fetch_quotes(instrument_keys: List[str]) -> Dict[str, Any]:
     tok = _token()
     if not tok:
         raise RuntimeError("UPSTOX_ACCESS_TOKEN missing")
+    exact_keys = list(dict.fromkeys(str(key).strip().upper() for key in instrument_keys))
+    invalid = [key for key in exact_keys if not is_exact_nse_equity_key(key)]
+    if invalid:
+        raise ValueError(f"invalid NSE equity instrument keys: {invalid[:3]}")
     result = {}
-    for i in range(0, len(instrument_keys), 50):
-        part = instrument_keys[i:i+50]
+    for i in range(0, len(exact_keys), 50):
+        part = exact_keys[i:i+50]
         keys = ",".join(part)
-        url = f"{API_BASE}/market-quote/quotes?instrument_key={urllib.request.quote(keys, safe=',|')}"
+        url = f"{API_BASE}/market-quote/quotes?instrument_key={quote(keys, safe=',|')}"
         req = urllib.request.Request(url, headers=_headers(True))
         try:
             with urllib.request.urlopen(req, timeout=60) as resp:
