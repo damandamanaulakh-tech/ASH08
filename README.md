@@ -2,12 +2,6 @@
 
 ASH08 is a separate paper-trading product for Indian NSE equities. It combines a validated universe, strict scanner, paper-accounting engine, and Adaptive Risk Governor.
 
-Production startup never seeds demo scans, resets the paper ledger, or creates
-orders from synthetic rows. For an isolated local UI demonstration only, set
-`ASH08_ALLOW_DEMO=true` and send an authenticated `POST` to `/api/demo/run`;
-generated records are marked
-`synthetic_demo` and are blocked from automatic paper execution.
-
 ## Approved runtime baseline
 
 - Book value: ₹50,00,000
@@ -46,22 +40,9 @@ The repository includes `render.yaml` with:
 
 Secrets such as Upstox and Supabase credentials must be configured only in Render environment settings and must not be committed.
 
-`ASH08_API_TOKEN` is required for all state-changing API requests. The browser
-keeps the value in session storage only and sends it as `X-ASH08-Token`.
-
 ## Important operating rule
 
 Core scanning remains blocked until real point-in-time ADV20, turnover, momentum, quality, correlation, and freshness evidence is populated. ASH08 does not invent missing metrics, prices, fills, or profits.
-
-Upstox quote requests use only exact `NSE_EQ|<ISIN>` keys obtained from the
-instrument master or a persisted universe row. Symbol-derived keys such as
-`NSE_EQ|TCS` are rejected, and missing ADV20 or turnover excludes a stock from
-Core instead of passing it through.
-
-Paper orders are idempotent when an `idempotency_key` is supplied. Manual and
-automatic buys share the same ten-position and per-name sizing gates. Automatic
-buys require an explicit live price, sells cannot exceed open inventory, and
-P&L remains unchanged when no new Upstox mark is available.
 
 ## Main components
 

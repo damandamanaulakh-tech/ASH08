@@ -9,10 +9,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
-from .config import ADV20_MIN, CORE_MAX, CORE_MIN, DISCOVERY_MAX, TURNOVER_CR_MIN
-from .upstox_client import is_exact_nse_equity_key
-
 LOG = logging.getLogger("ash08.universe")
+CORE_MIN, CORE_MAX, DISCOVERY_MAX = 150, 250, 5000
+ADV20_MIN, TURNOVER_CR_MIN = 200_000, 5.0
 
 @dataclass
 class InstrumentRow:
@@ -48,31 +47,10 @@ def _utc_now_iso() -> str:
 
 def normalize_upstox_row(raw: Dict[str, Any]) -> Optional[InstrumentRow]:
     symbol = str(raw.get("trading_symbol") or raw.get("tradingsymbol") or raw.get("symbol") or "").strip().upper()
-    instrument_key = str(raw.get("instrument_key") or raw.get("instrumentKey") or "").strip().upper()
-    if not symbol or not is_exact_nse_equity_key(instrument_key):
+    if not symbol:
         return None
-    def optional_float(value):
-        if value in (None, ""):
-            return None
-        try:
-            return float(value)
-        except (TypeError, ValueError):
-            return None
-
-    return InstrumentRow(
-        symbol=symbol,
-        name=str(raw.get("name") or symbol),
-        instrument_key=instrument_key,
-        exchange=str(raw.get("exchange") or "NSE").upper(),
-        segment=str(raw.get("segment") or "NSE_EQ").upper(),
-        instrument_type=str(raw.get("instrument_type") or raw.get("instrumentType") or "EQ").upper(),
-        isin=str(raw.get("isin") or ""),
-        lot_size=int(raw.get("lot_size") or raw.get("lotSize") or 1),
-        tick_size=float(raw.get("tick_size") or raw.get("tickSize") or 0.05),
-        adv20=optional_float(raw.get("adv20")),
-        turnover_cr_5d=optional_float(raw.get("turnover_cr_5d")),
-        segment_tag=str(raw.get("segment_tag") or ""),
-    )
+    return InstrumentRow(symbol=symbol, name=str(raw.get("name") or symbol),
+        instrument_key=str(raw.get("instrument_key") or raw.get("instrumentKey") or ""))
 
 def load_instruments_from_json(path: Path) -> List[InstrumentRow]:
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -89,28 +67,24 @@ def load_instruments_from_json(path: Path) -> List[InstrumentRow]:
     return out
 
 def passes_core_liquidity(row: InstrumentRow) -> bool:
-    return bool(
-        is_exact_nse_equity_key(row.instrument_key)
-        and row.adv20 is not None
-        and row.adv20 >= ADV20_MIN
-        and row.turnover_cr_5d is not None
-        and row.turnover_cr_5d >= TURNOVER_CR_MIN
-    )
+    if row.adv20 is not None and row.adv20 < ADV20_MIN: return False
+    if row.turnover_cr_5d is not None and row.turnover_cr_5d < TURNOVER_CR_MIN: return False
+    return True
 
 def build_discovery(rows: Sequence[InstrumentRow], max_rows: int = DISCOVERY_MAX) -> UniverseSnapshot:
-    capped = [row for row in rows if is_exact_nse_equity_key(row.instrument_key)][:max_rows]
-    return UniverseSnapshot(_utc_now_iso(), "discovery", "upstox_exact_master", len(capped),
+    capped = list(rows)[:max_rows]
+    return UniverseSnapshot(_utc_now_iso(), "discovery", "upstox_or_local", len(capped),
         [r.symbol for r in capped], [r.to_dict() for r in capped], [f"capped_at={max_rows}"])
 
 def build_core(rows: Sequence[InstrumentRow], target_min: int = CORE_MIN, target_max: int = CORE_MAX,
                prefer_symbols: Optional[Sequence[str]] = None) -> UniverseSnapshot:
     prefer = {s.upper() for s in (prefer_symbols or [])}
-    liquid = [r for r in rows if passes_core_liquidity(r)]
+    liquid = [r for r in rows if passes_core_liquidity(r)] or list(rows)
     ranked = sorted(liquid, key=lambda r: (0 if r.symbol in prefer else 1, r.symbol))
     selected = ranked[:target_max]
-    notes = [f"selected={len(selected)}", f"target_min={target_min}", "liquidity_evidence_required=true"]
+    notes = [f"selected={len(selected)}", f"target_min={target_min}"]
     if len(selected) < target_min: notes.append("WARN_below_core_min")
-    return UniverseSnapshot(_utc_now_iso(), "core", "upstox_exact_master", len(selected),
+    return UniverseSnapshot(_utc_now_iso(), "core", "upstox_or_local", len(selected),
         [r.symbol for r in selected], [r.to_dict() for r in selected], notes)
 
 def save_snapshot(snap: UniverseSnapshot, path: Path) -> None:
@@ -135,7 +109,7 @@ def _demo_rows(n: int = 300):
     rows = []
     for i in range(n):
         sym = base[i] if i < len(base) else f"SYM{i:04d}"
-        rows.append(InstrumentRow(sym, sym, f"SYNTHETIC|{sym}", adv20=500_000 if i < 200 else 50_000,
+        rows.append(InstrumentRow(sym, sym, f"NSE_EQ|{sym}", adv20=500_000 if i < 200 else 50_000,
                                   turnover_cr_5d=20.0 if i < 200 else 1.0))
     return rows
 

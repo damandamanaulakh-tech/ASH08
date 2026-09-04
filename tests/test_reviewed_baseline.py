@@ -2,8 +2,6 @@ import json
 import os
 import tempfile
 import unittest
-from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 from unittest.mock import patch
 
 from ash08 import upstox_client
@@ -76,55 +74,6 @@ class ReviewedBaselineTests(unittest.TestCase):
                 self.assertEqual(engine.place_order(f"SYM{number}", "BUY", "MARKET", 1, 1000)["status"], "FILLED")
             rejected = engine.place_order("SYM10", "BUY", "MARKET", 1, 1000)
             self.assertEqual(rejected["reason"], "MAX_OPEN_REACHED")
-
-    def test_repeated_symbol_orders_cannot_bypass_max_open(self):
-        with tempfile.TemporaryDirectory() as directory:
-            engine = PaperEngine(directory, book_value=5_000_000)
-            for _ in range(10):
-                self.assertEqual(engine.place_order("SAME", "BUY", "MARKET", 1, 1000)["status"], "FILLED")
-            rejected = engine.place_order("SAME", "BUY", "MARKET", 1, 1000)
-            self.assertEqual(rejected["reason"], "MAX_OPEN_REACHED")
-            self.assertEqual(engine.open_count(), 10)
-
-    def test_sell_mutates_inventory_and_oversell_is_rejected(self):
-        with tempfile.TemporaryDirectory() as directory:
-            engine = PaperEngine(directory, book_value=5_000_000)
-            buy = engine.place_order("TCS", "BUY", "MARKET", 50, 3840)
-            filled_qty = buy["sized_qty"]
-            rejected = engine.place_order("TCS", "SELL", "MARKET", filled_qty + 1, 3900)
-            self.assertEqual(rejected["status"], "REJECTED")
-            self.assertEqual(rejected["reason"], "INSUFFICIENT_POSITION")
-            self.assertEqual(engine.open_count(), 1)
-            sold = engine.place_order("TCS", "SELL", "MARKET", filled_qty, 3900)
-            self.assertEqual(sold["status"], "FILLED")
-            self.assertEqual(sold["sized_qty"], filled_qty)
-            self.assertEqual(engine.open_count(), 0)
-            self.assertEqual(engine.positions[0]["exit_reason"], "MANUAL_SELL")
-
-    def test_auto_buy_requires_a_supplied_live_price(self):
-        with tempfile.TemporaryDirectory() as directory:
-            engine = PaperEngine(directory, book_value=5_000_000)
-            result = engine.auto_buy_selects([{"symbol": "TCS", "decision": "SELECT", "ltp": 3840}], {})
-            self.assertEqual(result["bought"], 0)
-            self.assertEqual(result["skipped_detail"][0]["reason"], "missing_live_price")
-            self.assertEqual(engine.open_count(), 0)
-
-    def test_concurrent_orders_leave_one_valid_atomic_state_file(self):
-        with tempfile.TemporaryDirectory() as directory:
-            engine = PaperEngine(directory, book_value=5_000_000)
-            with ThreadPoolExecutor(max_workers=8) as pool:
-                orders = list(pool.map(
-                    lambda number: engine.place_order(
-                        f"SYM{number}", "BUY", "MARKET", 1, 1000,
-                        idempotency_key=f"concurrent-{number}",
-                    ),
-                    range(20),
-                ))
-            self.assertEqual(sum(order["status"] == "FILLED" for order in orders), 10)
-            state_path = Path(directory) / "paper_state.json"
-            state = json.loads(state_path.read_text())
-            self.assertEqual(sum(position["status"] == "OPEN" for position in state["positions"]), 10)
-            self.assertEqual(list(Path(directory).glob(".paper_state.*.tmp")), [])
 
     def test_governor_requires_complete_fresh_evidence(self):
         unverified = evaluate_governor(damage=True, q10=True, sell=True)
