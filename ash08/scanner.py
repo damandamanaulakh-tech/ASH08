@@ -1,4 +1,4 @@
-"""ASH08 Scanner - locked gates SELECT / WATCH / REJECT."""
+"""ASH08 Scanner - locked gates SELECT / WATCH / REJECT. Numbers from ash08.config."""
 from __future__ import annotations
 
 import argparse
@@ -9,10 +9,19 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
+from ash08.config import (
+    ADV20_MIN,
+    CORR_MAX,
+    MOM_MIN,
+    MOM_WEIGHT,
+    QUAL_WEIGHT,
+    SCORE_SELECT,
+    SCORE_WATCH,
+    STALE_MAX_DAYS,
+    TURNOVER_CR_MIN,
+)
+
 LOG = logging.getLogger("ash08.scanner")
-ADV20_MIN, TURNOVER_CR_MIN, STALE_MAX_DAYS = 200_000, 5.0, 7
-MOM_MIN, SCORE_SELECT, SCORE_WATCH, CORR_MAX = 0.0, 70.0, 55.0, 0.85
-MOM_WEIGHT, QUAL_WEIGHT = 0.65, 0.35
 
 
 @dataclass
@@ -90,7 +99,7 @@ def evaluate_stock(m: StockMetrics) -> ScanRow:
     mom_ok = True if m.mom_6m is None else m.mom_6m > MOM_MIN
     hits.append(ParamHit("P-MOM", mom_ok, f"mom={m.mom_6m}"))
     c_ok = True if m.max_corr_vs_book is None else m.max_corr_vs_book <= CORR_MAX
-    hits.append(ParamHit("P-CORR", c_ok, f"corr={m.max_corr_vs_book}"))
+    hits.append(ParamHit("P-CORR", c_ok, f"corr={m.max_corr_vs_book} max={CORR_MAX}"))
     hard = adv_ok and t_ok and s_ok and mom_ok and c_ok
     score = compute_final_score(m.mom_6m, m.quality_score)
     hits.append(ParamHit("P-SCORE", True, f"score={score}"))
@@ -115,7 +124,6 @@ def evaluate_stock(m: StockMetrics) -> ScanRow:
 def run_scan(
     metrics: Sequence[StockMetrics],
     universe_bucket: str = "core",
-    require_metrics: bool = False,
 ) -> ScanSnapshot:
     rows = [evaluate_stock(m) for m in metrics]
     rows_sorted = sorted(
@@ -134,7 +142,11 @@ def run_scan(
         watch_count=sum(1 for r in rows_sorted if r.decision == "WATCH"),
         reject_count=sum(1 for r in rows_sorted if r.decision == "REJECT"),
         rows=[r.to_dict() for r in rows_sorted],
-        notes=[f"SCORE_SELECT={SCORE_SELECT}", f"SCORE_WATCH={SCORE_WATCH}"],
+        notes=[
+            f"SCORE_SELECT={SCORE_SELECT}",
+            f"SCORE_WATCH={SCORE_WATCH}",
+            f"CORR_MAX={CORR_MAX}",
+        ],
     )
 
 

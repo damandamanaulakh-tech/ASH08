@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+from ash08.config import public_config
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 LOG = logging.getLogger("ash08.api")
 DESK = ROOT / "desk"
@@ -207,8 +208,9 @@ class Handler(BaseHTTPRequestHandler):
                 "ok": True, "service": "ash08-desk", "modules": sorted(MODS.keys()),
                 "core_seed_count": CORE_COUNT, "paper_open": open_n, "store": store_info,
                 "upstox": ux, "upstox_token_set": ux.get("token_set"), "upstox_connected": ux.get("connected"),
-                "trade_plan": {"stop_pct": 3.0, "target_pct": 6.0, "max_hold_days": 15, "max_open": 10},
-                "note": "Upstox optional. Paper P&L uses paper marks when live quotes blocked.",
+                "trade_plan": public_config()["trade_plan"],
+                "contract": public_config(),
+                "note": "G0 contract: SELECT>=70 WATCH>=55 corr<=0.70. Seed scan still synthetic until G2.",
             })
         if path == "/api/universe/core":
             if "store" not in MODS:
@@ -274,10 +276,11 @@ class Handler(BaseHTTPRequestHandler):
             "level": getattr(eng.governor, "level", "L0"),
             "exposure_pct": getattr(eng.governor, "exposure_pct", 100),
         }
+        cfg = public_config()
         plan = {
-            "stop_pct": 3.0, "target_pct": 6.0, "max_hold_days": 15, "max_open": 10,
+            **cfg["trade_plan"],
             "exits": ["STOP_HIT", "TARGET_HIT", "MAX_HOLD", "GOVERNOR_CUT", "ROTATION"],
-            "size": "2.5% book x governor exposure",
+            "size": f"{cfg['max_name_pct']}% book x governor exposure",
         }
         ltp_source = "upstox" if live else "paper_marks"
         return self.json(200, {

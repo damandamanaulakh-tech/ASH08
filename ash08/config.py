@@ -1,47 +1,50 @@
-"""Central, versioned runtime configuration for ASH08."""
+"""ASH08 G0 runtime contract — single source of truth.
+
+Locked decision numbers are constants. Scanner, paper, API, piano, README,
+and CI import from here. 67/60 belongs to backup/aug24-fail-closed only.
+"""
 from __future__ import annotations
 
 import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PARAMETER_SET_ID = os.environ.get("ASH08_PARAMETER_SET_ID", "ash08-50l-v1")
-BOOK_VALUE = float(os.environ.get("ASH08_BOOK_VALUE", "5000000"))
-MAX_OPEN_POSITIONS = int(os.environ.get("ASH08_MAX_OPEN_POSITIONS", "10"))
-MAX_NAME_PCT = float(os.environ.get("ASH08_MAX_NAME_PCT", "2.5"))
-MAX_GROSS_PCT = float(os.environ.get("ASH08_MAX_GROSS_PCT", "100"))
-STOP_PCT = float(os.environ.get("ASH08_STOP_PCT", "3"))
-TARGET_PCT = float(os.environ.get("ASH08_TARGET_PCT", "6"))
-MAX_HOLD_SESSIONS = int(os.environ.get("ASH08_MAX_HOLD_SESSIONS", "15"))
-BUY_COST_PCT = float(os.environ.get("ASH08_BUY_COST_PCT", "0.10"))
-SELL_COST_PCT = float(os.environ.get("ASH08_SELL_COST_PCT", "0.10"))
+PARAMETER_SET_ID = "ash08-50l-g0-v1"
 
-ADV20_MIN = float(os.environ.get("ASH08_ADV20_MIN", "200000"))
-TURNOVER_CR_MIN = float(os.environ.get("ASH08_TURNOVER_CR_MIN", "5"))
-STALE_MAX_DAYS = float(os.environ.get("ASH08_STALE_MAX_DAYS", "7"))
-MOM_MIN = float(os.environ.get("ASH08_MOM_MIN", "0"))
-CORR_MAX = float(os.environ.get("ASH08_CORR_MAX", "0.85"))
-SCORE_SELECT = float(os.environ.get("ASH08_SCORE_SELECT", "67"))
-SCORE_WATCH = float(os.environ.get("ASH08_SCORE_WATCH", "60"))
-MOM_WEIGHT = float(os.environ.get("ASH08_MOM_WEIGHT", "0.65"))
-QUAL_WEIGHT = float(os.environ.get("ASH08_QUAL_WEIGHT", "0.35"))
-MIN_CONFIDENCE = float(os.environ.get("ASH08_MIN_CONFIDENCE", "1.0"))
+# --- locked. do not env-override (old Render env had 67/60) ---
+BOOK_VALUE = 5_000_000.0
+MAX_OPEN_POSITIONS = 10
+MAX_NAME_PCT = 2.5
+MAX_GROSS_PCT = 100.0
+STOP_PCT = 3.0
+TARGET_PCT = 6.0
+MAX_HOLD_SESSIONS = 15
+BUY_COST_PCT = 0.10
+SELL_COST_PCT = 0.10
 
-CORE_MIN = int(os.environ.get("ASH08_CORE_MIN", "150"))
-CORE_MAX = int(os.environ.get("ASH08_CORE_MAX", "250"))
-DISCOVERY_MAX = int(os.environ.get("ASH08_DISCOVERY_MAX", "5000"))
+ADV20_MIN = 200_000.0
+TURNOVER_CR_MIN = 5.0
+STALE_MAX_DAYS = 7.0
+MOM_MIN = 0.0
+CORR_MAX = 0.70
+SCORE_SELECT = 70.0
+SCORE_WATCH = 55.0
+MOM_WEIGHT = 0.65
+QUAL_WEIGHT = 0.35
 
-MAX_BODY_BYTES = int(os.environ.get("ASH08_MAX_BODY_BYTES", str(64 * 1024)))
-MAX_QUOTE_AGE_SECONDS = int(os.environ.get("ASH08_MAX_QUOTE_AGE_SECONDS", "120"))
-RATE_LIMIT_PER_MINUTE = int(os.environ.get("ASH08_RATE_LIMIT_PER_MINUTE", "120"))
-API_TOKEN = (os.environ.get("ASH08_API_TOKEN") or "").strip()
-ALLOW_DEMO = (os.environ.get("ASH08_ALLOW_DEMO") or "0").strip().lower() in {"1", "true", "yes"}
+CORE_MIN = 150
+CORE_MAX = 250
+DISCOVERY_MAX = 5000
+
+GOVERNOR_EXPOSURE = {
+    "L0": 100.0,
+    "L1": 70.0,
+    "L2": 50.0,
+    "L3": 25.0,
+    "L4": 15.0,
+}
+
 DATA_DIR = Path(os.environ.get("ASH08_DATA_DIR") or (ROOT / "ash08_data")).resolve()
-TRUSTED_ORIGINS = tuple(
-    x.strip().rstrip("/")
-    for x in (os.environ.get("ASH08_TRUSTED_ORIGINS") or "").split(",")
-    if x.strip()
-)
 
 
 def public_config() -> dict:
@@ -56,6 +59,7 @@ def public_config() -> dict:
         "max_hold_sessions": MAX_HOLD_SESSIONS,
         "buy_cost_pct": BUY_COST_PCT,
         "sell_cost_pct": SELL_COST_PCT,
+        "governor_exposure": dict(GOVERNOR_EXPOSURE),
         "scanner": {
             "adv20_min": ADV20_MIN,
             "turnover_cr_min": TURNOVER_CR_MIN,
@@ -66,6 +70,16 @@ def public_config() -> dict:
             "score_watch": SCORE_WATCH,
             "mom_weight": MOM_WEIGHT,
             "quality_weight": QUAL_WEIGHT,
-            "min_confidence": MIN_CONFIDENCE,
+        },
+        "universe": {
+            "core_min": CORE_MIN,
+            "core_max": CORE_MAX,
+            "discovery_max": DISCOVERY_MAX,
+        },
+        "trade_plan": {
+            "stop_pct": STOP_PCT,
+            "target_pct": TARGET_PCT,
+            "max_hold_days": MAX_HOLD_SESSIONS,
+            "max_open": MAX_OPEN_POSITIONS,
         },
     }

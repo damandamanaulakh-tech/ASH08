@@ -1,4 +1,4 @@
-"""ASH08 Paper Engine - P&L, LTP mark-to-market, auto-SELECT. Works without Upstox."""
+"""ASH08 Paper Engine - P&L, LTP mark-to-market, auto-SELECT. Numbers from ash08.config."""
 from __future__ import annotations
 import argparse, json, logging, uuid
 from dataclasses import asdict, dataclass
@@ -6,11 +6,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from ash08.config import (
+    BOOK_VALUE as DEFAULT_BOOK,
+    GOVERNOR_EXPOSURE as EXPOSURE,
+    MAX_HOLD_SESSIONS as MAX_HOLD_DAYS,
+    MAX_NAME_PCT,
+    MAX_OPEN_POSITIONS,
+    STOP_PCT,
+    TARGET_PCT,
+)
+
 LOG = logging.getLogger("ash08.paper")
-MAX_NAME_PCT, DEFAULT_BOOK = 2.5, 5_000_000.0
-EXPOSURE = {"L0": 100.0, "L1": 70.0, "L2": 50.0, "L3": 25.0, "L4": 15.0}
-STOP_PCT, TARGET_PCT, MAX_HOLD_DAYS = 3.0, 6.0, 15
-MAX_OPEN_POSITIONS, DEFAULT_QTY = 10, 50
+DEFAULT_QTY = 50
 REF_LTP = {
     "TCS": 3840.0, "HDFCBANK": 1690.0, "RELIANCE": 2950.0, "INFY": 1850.0,
     "ICICIBANK": 1180.0, "SBIN": 820.0, "ITC": 450.0, "MTARTECH": 1850.0,
@@ -76,9 +83,8 @@ def paper_mark_price(symbol: str, entry: float) -> float:
         entry = 0.0
     if entry <= 0:
         entry = float(REF_LTP.get(sym) or 100.0)
-    # stable drift: -2.0% .. +2.0% (same every reload for a given symbol)
-    h = sum(ord(c) for c in sym) % 41  # 0..40
-    drift = (h - 20) / 1000.0  # -0.020 .. +0.020
+    h = sum(ord(c) for c in sym) % 41
+    drift = (h - 20) / 1000.0
     return round(entry * (1.0 + drift), 2)
 
 
@@ -106,11 +112,11 @@ def evaluate_governor(damage=False, q10=False, sell=False, any_fii=False) -> Gov
 
 
 class PaperEngine:
-    def __init__(self, data_dir="ash08_data", book_value=DEFAULT_BOOK):
+    def __init__(self, data_dir="ash08_data", book_value=None):
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
-        self.book_value = book_value
-        self.governor = GovState("L0_NORMAL", 100.0, "init")
+        self.book_value = float(book_value if book_value is not None else DEFAULT_BOOK)
+        self.governor = GovState("L0_NORMAL", EXPOSURE["L0"], "init")
         self.orders, self.positions = [], []
         self._load()
 
@@ -129,7 +135,7 @@ class PaperEngine:
         if g.get("level"):
             self.governor = GovState(
                 str(g.get("level")),
-                float(g.get("exposure_pct") or 100),
+                float(g.get("exposure_pct") or EXPOSURE["L0"]),
                 str(g.get("rationale") or ""),
             )
 
@@ -244,11 +250,6 @@ class PaperEngine:
             self._save()
 
     def mark_to_market(self, price_map=None, use_paper_marks=True):
-        """Update LTP + P&L for all positions.
-        price_map: live quotes when available.
-        use_paper_marks: if True and no live price, use deterministic drift
-                         so P&L is never stuck at 0 in paper mode.
-        """
         price_map = price_map or {}
         for p in self.positions:
             sym = str(p.get("symbol") or "").upper()
@@ -357,7 +358,6 @@ class PaperEngine:
         }
 
     def book_payload(self, live_prices=None):
-        """Always recompute marks. live_prices from Upstox when available; else paper marks."""
         live_prices = live_prices or {}
         self.mark_to_market(live_prices, use_paper_marks=True)
         opens = [p for p in self.positions if p.get("status") == "OPEN"]

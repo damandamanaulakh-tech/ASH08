@@ -9,9 +9,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
+from ash08.config import ADV20_MIN, CORE_MAX, CORE_MIN, DISCOVERY_MAX, TURNOVER_CR_MIN
+
 LOG = logging.getLogger("ash08.universe")
-CORE_MIN, CORE_MAX, DISCOVERY_MAX = 150, 250, 5000
-ADV20_MIN, TURNOVER_CR_MIN = 200_000, 5.0
 
 @dataclass
 class InstrumentRow:

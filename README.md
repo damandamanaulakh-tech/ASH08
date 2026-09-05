@@ -1,58 +1,50 @@
-# ASH08 Reviewed 50L Desk
+# ASH08 Desk (G0 contract)
 
-ASH08 is a separate paper-trading product for Indian NSE equities. It combines a validated universe, strict scanner, paper-accounting engine, and Adaptive Risk Governor.
+ASH08 is a paper-only NSE desk. Own repo. Not AshStocks.
 
-## Approved runtime baseline
+## Locked runtime (ash08/config.py)
 
-- Book value: ₹50,00,000
-- SELECT: score >= 67
-- WATCH: 60 <= score < 67
-- Incomplete mandatory evidence: UNKNOWN
-- ADV20 >= 2,00,000 shares/day
-- Five-day turnover >= ₹5 crore
-- Stale data <= 7 days
-- Six-month momentum > 0
-- Maximum correlation vs book <= 0.85
-- Per-name cap: 2.5% multiplied by governor exposure
-- Maximum open positions: 10
-- Stop / target / maximum hold: -3% / +6% / 15 trading sessions
-- Buy and sell cost assumptions: 0.10% each
-- Governor exposure L0/L1/L2/L3/L4: 100/70/50/25/15%
+| Item | Value |
+|------|--------|
+| Book | ₹50,00,000 |
+| SELECT | score ≥ **70** |
+| WATCH | **55** ≤ score < 70 |
+| Corr vs book | ≤ **0.70** |
+| ADV20 | ≥ 2,00,000 |
+| 5d turnover | ≥ ₹5 Cr |
+| Stale | ≤ 7 days |
+| 6M momentum | > 0 |
+| Per-name cap | 2.5% × governor exposure |
+| Max open | 10 |
+| Stop / target / hold | −3% / +6% / 15 sessions |
+| Governor L0–L4 | 100 / 70 / 50 / 25 / 15 % |
 
-## Run locally
+`backup/aug24-fail-closed` is archive (SELECT 67 / WATCH 60). It is not `main`.
+
+## Honest operating state (G0)
+
+- Decision **numbers** are one contract.
+- Scan **inputs** are still synthetic until **G1/G2** (universe + metrics pipeline).
+- LTP is Upstox when the host is allowed; otherwise paper marks.
+
+## Run
 
 ```bash
 pip install -r requirements.txt
+python -m unittest discover -s tests -v
 python api.py
 ```
 
-The dashboard is served from `/`. Health and configuration are available from `/api/health`.
-
-## Render deployment
-
-The repository includes `render.yaml` with:
-
-- service name `ash08-desk`
-- start command `python api.py`
-- HTTP health gate `/api/health`
-- automatic deploys from the linked branch
-- the approved non-secret ₹50 lakh runtime parameters
-
-Secrets such as Upstox and Supabase credentials must be configured only in Render environment settings and must not be committed.
-
-## Important operating rule
-
-Core scanning remains blocked until real point-in-time ADV20, turnover, momentum, quality, correlation, and freshness evidence is populated. ASH08 does not invent missing metrics, prices, fills, or profits.
+Health: `/api/health` includes `contract`.
 
 ## Main components
 
 | Path | Role |
-|---|---|
-| `api.py` | HTTP API, dashboard serving, request validation and mutation controls |
-| `ash08/config.py` | Central versioned runtime parameters |
-| `ash08/universe.py` | Discovery and strict Core universe construction |
-| `ash08/scanner.py` | SELECT / WATCH / REJECT / UNKNOWN evaluation |
-| `ash08/paper_engine.py` | Durable paper orders, positions, exits, cash and P&L |
-| `ash08/upstox_client.py` | Instrument master, exact keys and live quotes |
-| `desk/` | Truth-first browser dashboard |
-| `tests/` | Reviewed-baseline regression tests |
+|------|------|
+| `ash08/config.py` | G0 locked numbers |
+| `api.py` | HTTP + desk |
+| `ash08/scanner.py` | SELECT / WATCH / REJECT |
+| `ash08/paper_engine.py` | paper book, size, exits |
+| `ash08/universe.py` | Core 150–250 / Discovery ≤5000 policy |
+| `desk/` | Sourceborn dashboard |
+| `tests/` | contract tests vs this engine |
