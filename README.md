@@ -21,10 +21,12 @@ ASH08 is a paper-only NSE desk. Own repo. Not AshStocks.
 
 `backup/aug24-fail-closed` is archive (SELECT 67 / WATCH 60). It is not `main`.
 
-## Honest operating state (G0)
+## Honest operating state (G0 + G1)
 
-- Decision **numbers** are one contract.
-- Scan **inputs** are still synthetic until **G1/G2** (universe + metrics pipeline).
+- Decision **numbers** are one contract (`ash08/config.py`).
+- **Core** is 150–250, rebuilt weekly, persisted. Seed pool (~1401) is not Core.
+- **Discovery** is on-demand, cap 5000, never auto-buy.
+- Scan **inputs** are still synthetic until **G2**.
 - LTP is Upstox when the host is allowed; otherwise paper marks.
 
 ## Run

@@ -11,7 +11,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-from ash08.config import public_config
+from ash08.config import CORE_MAX, CORE_MIN, public_config 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 LOG = logging.getLogger("ash08.api")
 DESK = ROOT / "desk"
@@ -138,32 +138,97 @@ def auto_buy_from_scan(scan_dict):
         LOG.exception("auto_buy")
         return {"error": str(e)}
 
-def seed_demo_local():
-    if "store" not in MODS or "Metrics" not in MODS or "run_scan" not in MODS:
-        return {"ok": False, "error": "modules missing"}
-    from datetime import datetime, timezone
-    store = MODS["store"]()
-    symbols = list(CORE_SYMBOLS)
-    rows = [{"symbol": s, "name": s, "instrument_key": f"NSE_EQ|{s}"} for s in symbols]
-    store.save_universe("core", {
+
+def _mgr():
+    if "Uni" not in MODS:
+        return None
+    return MODS["Uni"](data_dir=str(DATA_DIR))
+
+
+def core_symbols_live():
+    """Active Core membership only (150–250). Not the 1401 seed pool."""
+    mgr = _mgr()
+    data = None
+    if mgr:
+        data = mgr.load_core()
+    if not data and "store" in MODS:
+        try:
+            data = MODS["store"]().load_universe("core")
+        except Exception:
+            data = None
+    symbols = [str(s).upper() for s in (data or {}).get("symbols") or [] if s]
+    if CORE_MIN <= len(symbols) <= CORE_MAX:
+        return symbols
+    return []
+
+
+def ensure_core(force=False):
+    mgr = _mgr()
+    if not mgr:
+        return {"ok": False, "error": "UniverseManager missing", "count": 0, "symbols": []}
+    snap, rebuilt = mgr.ensure_core(CORE_SYMBOLS, force=force)
+    if "store" in MODS:
+        try:
+            MODS["store"]().save_universe("core", snap)
+        except Exception as e:
+            LOG.warning("save_universe: %s", e)
+    return {
+        "ok": True,
+        "rebuilt": rebuilt,
+        "count": snap.get("count") or len(snap.get("symbols") or []),
+        "symbols": snap.get("symbols") or [],
+        "asof": snap.get("asof"),
+        "notes": snap.get("notes") or [],
+        "policy_id": snap.get("policy_id"),
+        "source": snap.get("source"),
         "bucket": "core",
-        "asof": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "source": "seed", "count": len(symbols), "symbols": symbols, "rows": rows, "notes": [],
-    })
+        "rows": snap.get("rows") or [],
+    }
+
+
+def scan_core(auto_buy=False):
+    """Scan Core only. Metrics still synthetic until G2 — tagged in notes."""
+    if "Metrics" not in MODS or "run_scan" not in MODS or "store" not in MODS:
+        return {"ok": False, "error": "modules missing"}
+    core = ensure_core(force=False)
+    symbols = core.get("symbols") or []
+    if not symbols:
+        return {"ok": False, "error": "core empty", "core": core}
     metrics = []
-    for i, s in enumerate(symbols[:400]):
+    for i, s in enumerate(symbols):
         mom = 0.14 - (i % 9) * 0.015
         qual = 78 - (i % 11) * 2
         ltp = REF_LTP.get(s, 100.0 + (i % 50) * 3)
-        metrics.append(MODS["Metrics"](symbol=s, adv20=350000, turnover_cr_5d=12, stale_days=0,
-                                       mom_6m=mom, quality_score=qual, ltp=ltp))
+        metrics.append(MODS["Metrics"](
+            symbol=s, adv20=None, turnover_cr_5d=None, stale_days=None,
+            mom_6m=mom, quality_score=qual, ltp=ltp,
+        ))
     snap = MODS["run_scan"](metrics, universe_bucket="core")
     scan_dict = snap.to_dict()
+    scan_dict.setdefault("notes", [])
+    scan_dict["notes"] = list(scan_dict.get("notes") or []) + [
+        "metrics=synthetic_pending_G2",
+        f"core_count={len(symbols)}",
+    ]
+    store = MODS["store"]()
     store.save_scan(scan_dict)
-    auto = auto_buy_from_scan(scan_dict)
-    return {"ok": True, "core_count": len(symbols), "select": snap.select_count,
-            "watch": snap.watch_count, "reject": snap.reject_count, "auto_paper": auto,
-            "upstox": upstox_status()}
+    auto = auto_buy_from_scan(scan_dict) if auto_buy else None
+    return {
+        "ok": True,
+        "core_count": len(symbols),
+        "select": snap.select_count,
+        "watch": snap.watch_count,
+        "reject": snap.reject_count,
+        "auto_paper": auto,
+        "upstox": upstox_status(),
+        "notes": scan_dict["notes"],
+    }
+
+
+def seed_demo_local():
+    """Back-compat name for /api/demo/run — scan Core, do not dump 1401."""
+    ensure_core(force=False)
+    return scan_core(auto_buy=False)
 
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
@@ -206,30 +271,36 @@ class Handler(BaseHTTPRequestHandler):
             ux = upstox_status()
             return self.json(200, {
                 "ok": True, "service": "ash08-desk", "modules": sorted(MODS.keys()),
-                "core_seed_count": CORE_COUNT, "paper_open": open_n, "store": store_info,
+                "core_seed_count": CORE_COUNT, "core_count": len(core_symbols_live()),
+                "paper_open": open_n, "store": store_info,
                 "upstox": ux, "upstox_token_set": ux.get("token_set"), "upstox_connected": ux.get("connected"),
                 "trade_plan": public_config()["trade_plan"],
                 "contract": public_config(),
-                "note": "G0 contract: SELECT>=70 WATCH>=55 corr<=0.70. Seed scan still synthetic until G2.",
+                "universe": (_mgr().status() if _mgr() else {}),
+                "note": "G1 Core 150-250 weekly. Scan metrics still synthetic until G2.",
             })
         if path == "/api/universe/core":
-            if "store" not in MODS:
-                return self.json(500, {"ok": False, "error": "store missing"})
-            data = MODS["store"]().load_universe("core")
-            if not data or not data.get("symbols"):
-                seed_demo_local()
-                data = MODS["store"]().load_universe("core")
-            return self.json(200, data or {"count": 0, "symbols": []})
+            core = ensure_core(force=False)
+            return self.json(200, core)
+        if path == "/api/universe/refresh":
+            core = ensure_core(force=True)
+            return self.json(200, core)
+        if path == "/api/universe/discovery":
+            mgr = _mgr()
+            if not mgr:
+                return self.json(500, {"ok": False, "error": "UniverseManager missing"})
+            snap = mgr.rebuild_discovery(CORE_SYMBOLS)
+            return self.json(200, {"ok": True, "auto_buy": False, **snap})
         if path == "/api/scan/latest":
             if "store" not in MODS:
                 return self.json(500, {"ok": False, "error": "store missing"})
             data = MODS["store"]().load_scan()
             if not data or not data.get("rows"):
-                seed_demo_local()
+                scan_core(auto_buy=False)
                 data = MODS["store"]().load_scan()
             return self.json(200, data or {"rows": []})
         if path in ("/api/scan/run", "/api/demo/run"):
-            return self.json(200, seed_demo_local())
+            return self.json(200, scan_core(auto_buy=False))
         if path == "/api/paper/book":
             return self.api_paper_book()
         if path == "/api/pnl/tick":
@@ -248,7 +319,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.json(500, {"ok": False, "error": "store missing"})
             scan = MODS["store"]().load_scan() or {}
             if not scan.get("rows"):
-                seed_demo_local()
+                scan_core(auto_buy=False)
                 scan = MODS["store"]().load_scan() or {}
             return self.json(200, {"ok": True, "auto_paper": auto_buy_from_scan(scan), "upstox": upstox_status()})
         return self.serve_static(path)
@@ -392,12 +463,14 @@ def main():
     DESK.mkdir(parents=True, exist_ok=True)
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     try:
-        seed_demo_local()
+        core = ensure_core(force=False)
+        LOG.info("core count=%s rebuilt=%s", core.get("count"), core.get("rebuilt"))
     except Exception as e:
-        LOG.warning("seed: %s", e)
+        LOG.warning("ensure_core: %s", e)
     get_engine()
-    LOG.info("ASH08 on 0.0.0.0:%s paper=%s core=%s upstox=%s",
-             PORT, "PaperEngine" in MODS, CORE_COUNT, upstox_status().get("detail"))
+    LOG.info("ASH08 on 0.0.0.0:%s paper=%s seed_pool=%s core=%s upstox=%s",
+             PORT, "PaperEngine" in MODS, CORE_COUNT, len(core_symbols_live()),
+             upstox_status().get("detail"))
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
 
 if __name__ == "__main__":

@@ -35,6 +35,8 @@ QUAL_WEIGHT = 0.35
 CORE_MIN = 150
 CORE_MAX = 250
 DISCOVERY_MAX = 5000
+CORE_TTL_DAYS = 7
+UNIVERSE_POLICY_ID = "ash08-universe-g1-v1"
 
 GOVERNOR_EXPOSURE = {
     "L0": 100.0,
@@ -72,9 +74,11 @@ def public_config() -> dict:
             "quality_weight": QUAL_WEIGHT,
         },
         "universe": {
+            "policy_id": UNIVERSE_POLICY_ID,
             "core_min": CORE_MIN,
             "core_max": CORE_MAX,
             "discovery_max": DISCOVERY_MAX,
+            "core_ttl_days": CORE_TTL_DAYS,
         },
         "trade_plan": {
             "stop_pct": STOP_PCT,
