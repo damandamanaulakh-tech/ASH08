@@ -31,7 +31,7 @@ main{padding:14px 16px 40px;overflow:auto}.view{display:none}.view.active{displa
 .card{padding:12px}.card h4{margin:0 0 8px;font-size:13px}
 table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left}th{color:var(--muted);background:#0e1628;font-size:11px}
 .tag{display:inline-block;padding:2px 7px;border-radius:999px;font-size:10px;font-weight:700}
-.select{background:#052e16;color:#86efac}.watch{background:#422006;color:#fcd34d}.reject{background:#450a0a;color:#fca5a5}.open{background:#052e16;color:#86efac}
+.select{background:#052e16;color:#86efac}.watch{background:#422006;color:#fcd34d}.reject{background:#450a0a;color:#fca5a5}.unknown{background:#1e293b;color:#cbd5e1}.open{background:#052e16;color:#86efac}
 .muted{color:var(--muted)}.row{display:flex;justify-content:space-between;margin:6px 0;font-size:12px}
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.form-grid label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px}
 .form-grid input{width:100%;background:#0b1220;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:9px;font-size:12px}
@@ -219,7 +219,7 @@ const NOTE={adv:{t:'P-ADV20',b:'ADV20 ≥ 200,000'},turn:{t:'P-TURNOVER',b:'5D �
 function selectNote(el,id){document.querySelectorAll('.note').forEach(n=>n.classList.remove('active'));el.classList.add('active');document.getElementById('noteTitle').textContent=NOTE[id].t;document.getElementById('noteBody').textContent=NOTE[id].b;}
 function renderRows(rows,sc){const body=document.getElementById('scan-body');document.getElementById('kpi-passed').textContent=sc!=null?sc:'—';const picks=document.getElementById('home-picks');
 if(!rows||!rows.length){body.innerHTML='<tr><td colspan="6" class="muted" style="text-align:center;padding:20px">Empty — Seed</td></tr>';picks.innerHTML='<tr><td colspan="3" class="muted" style="text-align:center;padding:16px">No picks</td></tr>';return;}
-body.innerHTML=rows.slice(0,50).map((row,i)=>{const d=(row.decision||'').toUpperCase();const cls=d==='SELECT'?'select':d==='WATCH'?'watch':'reject';return '<tr><td class="muted">'+(i+1)+'</td><td><strong>'+row.symbol+'</strong></td><td><span class="tag '+cls+'">'+d+'</span></td><td>'+(row.score!=null?row.score:'')+'</td><td class="muted">'+(row.reason||'')+'</td><td><button class="btn" style="padding:4px 8px" onclick=\'openDetail('+JSON.stringify(row)+')\'>View</button></td></tr>';}).join('');
+body.innerHTML=rows.slice(0,50).map((row,i)=>{const d=(row.decision||'').toUpperCase();const cls=d==='SELECT'?'select':d==='WATCH'?'watch':d==='UNKNOWN'?'unknown':'reject';return '<tr><td class="muted">'+(i+1)+'</td><td><strong>'+row.symbol+'</strong></td><td><span class="tag '+cls+'">'+d+'</span></td><td>'+(row.score!=null?row.score:'')+'</td><td class="muted">'+(row.reason||'')+'</td><td><button class="btn" style="padding:4px 8px" onclick=\'openDetail('+JSON.stringify(row)+')\'>View</button></td></tr>';}).join('');
 const selects=rows.filter(r=>(r.decision||'').toUpperCase()==='SELECT').slice(0,8);
 if(!selects.length)picks.innerHTML='<tr><td colspan="3" class="muted" style="text-align:center;padding:16px">No SELECT</td></tr>';
 else picks.innerHTML=selects.map(r=>'<tr><td><strong>'+r.symbol+'</strong></td><td>'+r.score+'</td><td><button class="buy" style="padding:4px 8px;flex:none" onclick="ticket(\''+r.symbol+'\')">Buy</button></td></tr>').join('');}

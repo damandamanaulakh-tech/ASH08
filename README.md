@@ -26,8 +26,8 @@ ASH08 is a paper-only NSE desk. Own repo. Not AshStocks.
 - Decision **numbers** are one contract (`ash08/config.py`).
 - **Core** is 150–250, rebuilt weekly, persisted. Seed pool (~1401) is not Core.
 - **Discovery** is on-demand, cap 5000, never auto-buy.
-- Scan **inputs** are still synthetic until **G2**.
-- LTP is Upstox when the host is allowed; otherwise paper marks.
+- Scan **inputs** are measured from cached/Upstox daily bars, or **UNKNOWN**. No `i % 9` momentum.
+- LTP is Upstox only. Missing quote ≠ fake fill.
 
 ## Run
 

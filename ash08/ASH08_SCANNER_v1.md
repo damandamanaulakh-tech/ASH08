@@ -15,6 +15,7 @@ Own repo **ASH08**. Not AshStocks. Numbers from `ash08/config.py`.
 | P-SELECT | score ≥ **70** + hard pass |
 | P-WATCH | score ∈ **[55,70)** + hard pass |
 
-```bash
-python ash08/scanner.py --demo --data-dir ash08_data
-```
+Missing mandatory evidence (ADV20, turnover, stale, mom_6m, quality) → **UNKNOWN**, never PASS.
+
+Quality proxy (G2): 100 × (bar count / 126), UNKNOWN if fewer than 60 sessions.
+LTP: Upstox only.

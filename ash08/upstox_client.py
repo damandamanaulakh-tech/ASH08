@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Any, Dict, List
 
@@ -90,6 +91,25 @@ def fetch_quotes(instrument_keys: List[str]) -> Dict[str, Any]:
             raise RuntimeError(f"Upstox quotes {e.code}: {err[:200]}") from e
         result.update(payload.get("data") or {})
     return result
+
+
+def fetch_historical_daily(instrument_key: str, from_date: str, to_date: str) -> List[List[Any]]:
+    """Daily candles. Returns list of [ts, o, h, l, c, volume, oi]."""
+    tok = _token()
+    if not tok:
+        raise RuntimeError("UPSTOX_ACCESS_TOKEN missing")
+    key = urllib.parse.quote(instrument_key, safe="")
+    url = f"{API_BASE}/historical-candle/{key}/day/{to_date}/{from_date}"
+    req = urllib.request.Request(url, headers=_headers(True))
+    try:
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        err = e.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Upstox history {e.code}: {err[:200]}") from e
+    data = payload.get("data") if isinstance(payload, dict) else None
+    candles = (data or {}).get("candles") if isinstance(data, dict) else None
+    return candles or []
 
 
 def user_profile() -> Dict[str, Any]:

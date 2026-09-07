@@ -37,6 +37,16 @@ CORE_MAX = 250
 DISCOVERY_MAX = 5000
 CORE_TTL_DAYS = 7
 UNIVERSE_POLICY_ID = "ash08-universe-g1-v1"
+METRICS_POLICY_ID = "ash08-metrics-g2-v1"
+MOM_LOOKBACK_CAL_DAYS = 182
+MOM_MIN_SPAN_DAYS = 120
+ADV_WINDOW = 20
+TURNOVER_WINDOW = 5
+QUALITY_TARGET_SESSIONS = 126
+QUALITY_MIN_SESSIONS = 60
+CORR_MIN_OVERLAP = 20
+HISTORY_TTL_HOURS = 20
+METRICS_REFRESH_BATCH = 40
 
 GOVERNOR_EXPOSURE = {
     "L0": 100.0,
@@ -79,6 +89,15 @@ def public_config() -> dict:
             "core_max": CORE_MAX,
             "discovery_max": DISCOVERY_MAX,
             "core_ttl_days": CORE_TTL_DAYS,
+        },
+        "metrics": {
+            "policy_id": METRICS_POLICY_ID,
+            "mom_lookback_cal_days": MOM_LOOKBACK_CAL_DAYS,
+            "adv_window": ADV_WINDOW,
+            "turnover_window": TURNOVER_WINDOW,
+            "quality": "coverage of 126 sessions; UNKNOWN if < 60 bars",
+            "ltp": "upstox_only",
+            "missing": "UNKNOWN",
         },
         "trade_plan": {
             "stop_pct": STOP_PCT,

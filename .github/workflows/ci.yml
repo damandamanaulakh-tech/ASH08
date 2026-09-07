@@ -51,4 +51,7 @@ jobs:
           html = Path('desk/ASH08_Desk_Dashboard.html').read_text(encoding='utf-8')
           assert '≤ 0.70' in html or '<= 0.70' in html
           assert 'score >= 67' not in Path('README.md').read_text(encoding='utf-8')
+          api = Path('api.py').read_text(encoding='utf-8')
+          assert '0.14 - (i' not in api
+          assert '78 - (i % 11)' not in api
           PY

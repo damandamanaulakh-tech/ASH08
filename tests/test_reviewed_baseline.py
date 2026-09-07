@@ -59,6 +59,11 @@ class G0ContractTests(unittest.TestCase):
         self.assertGreaterEqual(row.score, SCORE_SELECT)
         self.assertEqual(row.decision, "SELECT")
 
+    def test_missing_is_unknown_not_pass(self):
+        row = evaluate_stock(StockMetrics("GAP"))
+        self.assertEqual(row.decision, "UNKNOWN")
+        self.assertFalse(row.hard_pass)
+
     def test_watch_band_55_to_70(self):
         row = evaluate_stock(StockMetrics("WATCH", 800_000, 25, 1, 0.05, 60.0, 0.4))
         self.assertAlmostEqual(row.score, 60.0, places=2)

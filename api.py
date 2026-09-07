@@ -124,19 +124,25 @@ def auto_buy_from_scan(scan_dict):
     selects = [r for r in (scan_dict.get("rows") or []) if str(r.get("decision") or "").upper() == "SELECT"]
     if not selects:
         return {"bought": 0, "skipped": 0, "open_count": len(eng.open_symbols())}
-    price_map = quotes_for_symbols([r.get("symbol") for r in selects])
+    live = quotes_for_symbols([r.get("symbol") for r in selects])
+    priced = []
+    skipped_px = []
     for r in selects:
         sym = str(r.get("symbol") or "").upper()
-        if r.get("ltp") and sym not in price_map:
-            try:
-                price_map[sym] = float(r["ltp"])
-            except Exception:
-                pass
+        px = live.get(sym)
+        if px is None:
+            skipped_px.append(sym)
+            continue
+        r = dict(r)
+        r["ltp"] = px
+        priced.append(r)
     try:
-        return eng.auto_buy_selects(selects, price_map=price_map)
+        result = eng.auto_buy_selects(priced, price_map=live)
     except Exception as e:
         LOG.exception("auto_buy")
         return {"error": str(e)}
+    result["skipped_no_upstox_ltp"] = skipped_px
+    return result
 
 
 def _mgr():
@@ -187,28 +193,28 @@ def ensure_core(force=False):
 
 
 def scan_core(auto_buy=False):
-    """Scan Core only. Metrics still synthetic until G2 — tagged in notes."""
+    """Scan Core with G2 metrics. No synthetic mom/quality/LTP."""
     if "Metrics" not in MODS or "run_scan" not in MODS or "store" not in MODS:
         return {"ok": False, "error": "modules missing"}
     core = ensure_core(force=False)
     symbols = core.get("symbols") or []
     if not symbols:
         return {"ok": False, "error": "core empty", "core": core}
-    metrics = []
-    for i, s in enumerate(symbols):
-        mom = 0.14 - (i % 9) * 0.015
-        qual = 78 - (i % 11) * 2
-        ltp = REF_LTP.get(s, 100.0 + (i % 50) * 3)
-        metrics.append(MODS["Metrics"](
-            symbol=s, adv20=None, turnover_cr_5d=None, stale_days=None,
-            mom_6m=mom, quality_score=qual, ltp=ltp,
-        ))
+    from ash08.config import METRICS_POLICY_ID
+    from ash08.metrics import build_metrics_for_core
+    eng = get_engine()
+    opens = list(eng.open_symbols()) if eng else []
+    live = quotes_for_symbols(symbols[:50] + opens)
+    metrics = build_metrics_for_core(
+        symbols, str(DATA_DIR), quotes=live, open_symbols=opens,
+    )
     snap = MODS["run_scan"](metrics, universe_bucket="core")
     scan_dict = snap.to_dict()
-    scan_dict.setdefault("notes", [])
     scan_dict["notes"] = list(scan_dict.get("notes") or []) + [
-        "metrics=synthetic_pending_G2",
+        f"metrics_policy={METRICS_POLICY_ID}",
+        "no_synthetic_metrics",
         f"core_count={len(symbols)}",
+        f"ltp_live={len(live)}",
     ]
     store = MODS["store"]()
     store.save_scan(scan_dict)
@@ -219,9 +225,26 @@ def scan_core(auto_buy=False):
         "select": snap.select_count,
         "watch": snap.watch_count,
         "reject": snap.reject_count,
+        "unknown": getattr(snap, "unknown_count", 0),
         "auto_paper": auto,
         "upstox": upstox_status(),
         "notes": scan_dict["notes"],
+        "ltp_source": "upstox" if live else "upstox_failed",
+    }
+
+
+def refresh_metrics(force=False):
+    from ash08.history import HistoryStore
+    symbols = core_symbols_live() or list(CORE_SYMBOLS[:CORE_MAX])
+    store = HistoryStore(DATA_DIR)
+    results = store.refresh_many(symbols, force=force)
+    ok_n = sum(1 for r in results if r.get("ok") and not r.get("skipped"))
+    return {
+        "ok": True,
+        "attempted": len(results),
+        "fetched": ok_n,
+        "results": results[:40],
+        "upstox": upstox_status(),
     }
 
 
@@ -277,7 +300,7 @@ class Handler(BaseHTTPRequestHandler):
                 "trade_plan": public_config()["trade_plan"],
                 "contract": public_config(),
                 "universe": (_mgr().status() if _mgr() else {}),
-                "note": "G1 Core 150-250 weekly. Scan metrics still synthetic until G2.",
+                "note": "G2 metrics: measured or UNKNOWN. No synthetic mom. LTP Upstox only.",
             })
         if path == "/api/universe/core":
             core = ensure_core(force=False)
@@ -291,6 +314,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self.json(500, {"ok": False, "error": "UniverseManager missing"})
             snap = mgr.rebuild_discovery(CORE_SYMBOLS)
             return self.json(200, {"ok": True, "auto_buy": False, **snap})
+        if path == "/api/metrics/refresh":
+            force = (qs.get("force") or ["0"])[0] in ("1", "true", "yes")
+            return self.json(200, refresh_metrics(force=force))
         if path == "/api/scan/latest":
             if "store" not in MODS:
                 return self.json(500, {"ok": False, "error": "store missing"})
