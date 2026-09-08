@@ -38,6 +38,7 @@ class StockMetrics:
     segment: str = ""
     ltp: Optional[float] = None
     order_signal: Optional[str] = None
+    vol_sigma: Optional[float] = None
 
 
 @dataclass
@@ -59,6 +60,7 @@ class ScanRow:
     hits: List[ParamHit] = field(default_factory=list)
     hard_pass: bool = False
     coverage: float = 1.0
+    vol_sigma: Optional[float] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -161,24 +163,20 @@ def evaluate_stock(m: StockMetrics) -> ScanRow:
         decision, reason = "REJECT", "P-ORDER net bulk sell"
     elif hard and score >= SCORE_SELECT:
         decision, reason = "SELECT", f"score {score} >= {SCORE_SELECT}"
-    elif hard and score >= SCORE_NEAR_MISS:
-        decision, reason = "NEAR_MISS", f"score {score} in 68–70 near-miss gate"
     elif hard and score >= SCORE_WATCH:
         decision, reason = "WATCH", f"score {score} in watch band"
     else:
         decision, reason = "REJECT", "hard fail or low score"
 
-    if decision == "NEAR_MISS":
-        add("P-NEAR_MISS", "PASS", reason)
-    elif score_ready and SCORE_NEAR_MISS <= score < SCORE_SELECT:
-        add("P-NEAR_MISS", "FAIL", f"score {score} near-miss band but hard fail")
+    if score_ready and SCORE_NEAR_MISS <= score < 70.0:
+        add("P-NEAR_MISS", "PASS", f"score {score} in 68–70 ledger (full SELECT)")
+    elif score_ready:
+        add("P-NEAR_MISS", "FAIL", f"score {score} outside 68–70 ledger")
     else:
-        add("P-NEAR_MISS", "FAIL" if score_ready else "UNKNOWN", reason)
+        add("P-NEAR_MISS", "UNKNOWN", reason)
 
     if decision == "SELECT":
         add("P-SELECT", "PASS", reason)
-    elif decision == "NEAR_MISS":
-        add("P-SELECT", "FAIL", "near-miss live gate, not full SELECT")
     elif decision == "UNKNOWN":
         add("P-SELECT", "UNKNOWN", reason)
     else:
@@ -194,6 +192,7 @@ def evaluate_stock(m: StockMetrics) -> ScanRow:
         hits=hits,
         hard_pass=hard,
         coverage=coverage,
+        vol_sigma=m.vol_sigma,
     )
 
 
@@ -207,7 +206,7 @@ def run_scan(
         if m.order_signal is None:
             m.order_signal = signal_for(m.symbol, pack)
         filled.append(evaluate_stock(m))
-    rank = {"SELECT": 0, "NEAR_MISS": 1, "WATCH": 2, "UNKNOWN": 3, "REJECT": 4}
+    rank = {"SELECT": 0, "WATCH": 1, "UNKNOWN": 2, "REJECT": 3}
     rows_sorted = sorted(
         filled,
         key=lambda r: (rank.get(r.decision, 9), -r.score, r.symbol),
@@ -220,7 +219,10 @@ def run_scan(
         watch_count=sum(1 for r in rows_sorted if r.decision == "WATCH"),
         reject_count=sum(1 for r in rows_sorted if r.decision == "REJECT"),
         unknown_count=sum(1 for r in rows_sorted if r.decision == "UNKNOWN"),
-        near_miss_count=sum(1 for r in rows_sorted if r.decision == "NEAR_MISS"),
+        near_miss_count=sum(
+            1 for r in rows_sorted
+            if r.decision == "SELECT" and SCORE_NEAR_MISS <= r.score < 70.0
+        ),
         rows=[r.to_dict() for r in rows_sorted],
         notes=[
             f"SCORE_SELECT={SCORE_SELECT}",

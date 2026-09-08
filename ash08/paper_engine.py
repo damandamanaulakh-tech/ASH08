@@ -15,12 +15,12 @@ from ash08.config import (
     MAX_HOLD_SESSIONS as MAX_HOLD_DAYS,
     MAX_NAME_PCT,
     MAX_OPEN_POSITIONS,
-    POSITION_SIZE_VALUE,
     SECTOR_MAX,
     STOP_PCT,
     TARGET_PCT,
     TICKER_BLOCKLIST,
 )
+from ash08.sizing import kelly_notional
 
 LOG = logging.getLogger("ash08.paper")
 DEFAULT_QTY = 50
@@ -165,15 +165,26 @@ class PaperEngine:
                 str(g.get("rationale") or ""),
             )
 
-    def size_qty(self, qty, price):
+    def size_qty(self, qty, price, score=None, sigma=None):
         if price is None or price <= 0:
             return 0
-        notional = POSITION_SIZE_VALUE * (self.governor.exposure_pct / 100.0)
+        notional, _diag = kelly_notional(
+            self.book_value, score, sigma, self.governor.exposure_pct,
+        )
         name_cap = self.book_value * (MAX_NAME_PCT / 100.0) * (self.governor.exposure_pct / 100.0)
-        sized = int(min(notional, name_cap) // price)
-        if qty and int(qty) > 0:
-            sized = max(sized, 0)
-        return max(0, sized)
+        notional = min(notional, name_cap)
+        return max(0, int(notional // price))
+
+    def _deployed_notional(self) -> float:
+        total = 0.0
+        for p in self.positions:
+            if p.get("status") != "OPEN":
+                continue
+            try:
+                total += float(p.get("entry") or 0) * float(p.get("qty") or 0)
+            except Exception:
+                pass
+        return total
 
     def place_order(
         self,
@@ -187,8 +198,9 @@ class PaperEngine:
         hold_days=None,
         source="manual",
         score=None,
+        sigma=None,
     ):
-        sized = self.size_qty(qty, fill_price)
+        sized = self.size_qty(qty, fill_price, score=score, sigma=sigma)
         if stop is None and fill_price:
             stop = round(fill_price * (1 - STOP_PCT / 100), 2)
         if target is None and fill_price:
@@ -375,14 +387,26 @@ class PaperEngine:
                 price = float(price)
             except Exception:
                 price = 100.0
+            score = row.get("score")
+            sigma = row.get("vol_sigma")
+            if sigma is None:
+                skipped.append({"symbol": sym, "reason": "no_vol"})
+                continue
+            trial_qty = self.size_qty(1, price, score=score, sigma=sigma)
+            extra = trial_qty * price
+            cap = self.book_value * (1.0 - CASH_RESERVE_PCT / 100.0)
+            if self._deployed_notional() + extra > cap:
+                skipped.append({"symbol": sym, "reason": "cash_reserve"})
+                continue
             order = self.place_order(
                 symbol=sym,
                 side="BUY",
                 order_type="MARKET",
-                qty=DEFAULT_QTY,
+                qty=trial_qty or DEFAULT_QTY,
                 fill_price=price,
                 source="auto_select",
-                score=row.get("score"),
+                score=score,
+                sigma=sigma,
             )
             if order.get("status") == "FILLED":
                 already.add(sym)

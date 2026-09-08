@@ -9,13 +9,12 @@ import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PARAMETER_SET_ID = "ash08-5cr-g6-v1"
+PARAMETER_SET_ID = "ash08-5cr-kelly-v1"
 
 # --- locked. do not env-override (old Render env had 67/60) ---
-BOOK_VALUE = 50_000_000.0  # ₹5 Cr owner 2026-09-09
+BOOK_VALUE = 50_000_000.0  # ₹5 Cr
 MAX_OPEN_POSITIONS = 500
-POSITION_SIZE_VALUE = 100_000.0  # 5 Cr / 500
-MAX_NAME_PCT = 2.5
+MAX_NAME_PCT = 5.0  # matches Kelly cap
 MAX_GROSS_PCT = 100.0
 STOP_PCT = 3.0
 TARGET_PCT = 6.0
@@ -28,11 +27,19 @@ TURNOVER_CR_MIN = 5.0
 STALE_MAX_DAYS = 7.0
 MOM_MIN = 0.0
 CORR_MAX = 0.70
-SCORE_SELECT = 70.0
-SCORE_NEAR_MISS = 68.0  # live gate: 68–70 buys as NEAR_MISS
+SCORE_SELECT = 68.0  # near-miss is full SELECT
+SCORE_NEAR_MISS = 68.0  # ledger: 68 ≤ score < 70 still tagged
 SCORE_WATCH = 55.0
 MOM_WEIGHT = 0.65
 QUAL_WEIGHT = 0.35
+
+# ½-Kelly (AM07 formula). IC assumed 0.05. Floor 67 so SELECT 68 has edge.
+KELLY_FRACTION = 0.5
+KELLY_IC = 0.05
+KELLY_MAX_PCT = 0.05
+KELLY_FLOOR = 67.0
+KELLY_MIN_NOTIONAL = 25_000.0
+KELLY_VOL_WINDOW = 63
 
 CORE_MIN = 150
 CORE_MAX = 250
@@ -64,7 +71,7 @@ GOVERNOR_EXPOSURE = {
 
 # ASH08-confirmed 2026-07-30 (Stock App / audit). Not AM07's 80-slot / −5 / +12 book.
 KILL_DAILY_PCT = 2.0
-CASH_RESERVE_PCT = 30.0
+CASH_RESERVE_PCT = 5.0
 DD_LADDER_PCT = (-5.0, -8.0, -10.0, -15.0, -20.0)
 CONSEC_LOSS_MAX = 2
 SECTOR_MAX = 2
@@ -81,7 +88,6 @@ def public_config() -> dict:
         "parameter_set_id": PARAMETER_SET_ID,
         "book_value": BOOK_VALUE,
         "max_open_positions": MAX_OPEN_POSITIONS,
-        "position_size_value": POSITION_SIZE_VALUE,
         "max_name_pct": MAX_NAME_PCT,
         "max_gross_pct": MAX_GROSS_PCT,
         "stop_pct": STOP_PCT,
@@ -148,5 +154,14 @@ def public_config() -> dict:
             "target_pct": TARGET_PCT,
             "max_hold_days": MAX_HOLD_SESSIONS,
             "max_open": MAX_OPEN_POSITIONS,
+        },
+        "sizing": {
+            "mode": "half_kelly",
+            "fraction": KELLY_FRACTION,
+            "ic_assumed": KELLY_IC,
+            "max_pct": KELLY_MAX_PCT,
+            "floor": KELLY_FLOOR,
+            "min_notional": KELLY_MIN_NOTIONAL,
+            "vol_window": KELLY_VOL_WINDOW,
         },
     }

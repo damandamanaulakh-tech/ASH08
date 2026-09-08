@@ -17,6 +17,7 @@ from ash08.config import (
 )
 from ash08.history import HistoryStore, normalize_bars
 from ash08.scanner import StockMetrics
+from ash08.sizing import annual_vol
 
 
 def _date(s: str):
@@ -112,6 +113,9 @@ def metrics_from_bars(
         else:
             corr_applicable = False
 
+    closes = [float(r["close"]) for r in rows]
+    sigma = annual_vol(closes)
+
     m = StockMetrics(
         symbol=symbol.upper(),
         adv20=adv20,
@@ -121,6 +125,7 @@ def metrics_from_bars(
         quality_score=quality,
         max_corr_vs_book=0.0 if not corr_applicable else max_corr,
         ltp=ltp,
+        vol_sigma=sigma,
     )
     return m
 

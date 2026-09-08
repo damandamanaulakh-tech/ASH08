@@ -7,15 +7,16 @@ ASH08 is a paper-only NSE desk. Own repo. Not AshStocks.
 | Item | Value |
 |------|--------|
 | Book | ₹5,00,00,000 (5 Cr) |
-| SELECT | score ≥ **70** |
-| NEAR_MISS (live buy) | **68** ≤ score < 70 |
+| SELECT | score ≥ **68** (68–70 is full SELECT, near-miss ledger only) |
+| NEAR_MISS (ledger) | 68 ≤ score < 70 on SELECT names |
 | WATCH | **55** ≤ score < 68 |
 | Corr vs book | ≤ **0.70** |
 | ADV20 | ≥ 2,00,000 |
 | 5d turnover | ≥ ₹5 Cr |
 | Stale | ≤ 7 days |
 | 6M momentum | > 0 |
-| Size | ₹1,00,000 / name (5 Cr / 500) |
+| Size | ½-Kelly (IC 0.05 assumed, cap 5% of book, floor 67) |
+| Cash reserve | 5% |
 | Max open | 500 |
 | Stop / target / hold | −3% / +6% / 15 sessions |
 | Governor L0–L4 | 100 / 70 / 50 / 25 / 15 % |

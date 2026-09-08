@@ -36,8 +36,8 @@ DEFINITIONS = {
     "P-MOM": f"6M momentum > {MOM_MIN:g}",
     "P-SCORE": "0.65×mom + 0.35×quality (measured)",
     "P-CORR": f"max |corr| vs open book ≤ {CORR_MAX}",
-    "P-SELECT": f"hard pass and score ≥ {SCORE_SELECT:g}",
-    "P-NEAR_MISS": f"hard pass and {SCORE_NEAR_MISS:g} ≤ score < {SCORE_SELECT:g} — live buy gate",
+    "P-SELECT": f"hard pass and score ≥ {SCORE_SELECT:g} (auto-buy, includes 68–70)",
+    "P-NEAR_MISS": "ledger: 68 ≤ score < 70 on a SELECT — same buy as ≥70",
     "P-ORDER": "NSE bulk/block/buyback: net buy PASS, net sell FAIL (blocks), none UNKNOWN (not blocking)",
     "P-GOV": "book-level L0–L4 exposure — not a name gate",
 }
