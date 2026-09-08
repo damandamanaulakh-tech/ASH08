@@ -6,11 +6,13 @@ from pathlib import Path
 
 from ash08.config import CORE_MAX, CORE_MIN, CORE_TTL_DAYS
 from ash08.core_seed import CORE_SYMBOLS
+from ash08.segments import LOOKUP
 from ash08.universe import (
     UniverseManager,
     build_core,
     core_count_ok,
     core_is_fresh,
+    prefer_for_core,
     rows_from_symbols,
 )
 
@@ -20,23 +22,25 @@ class UniverseG1Tests(unittest.TestCase):
         self.assertGreater(len(CORE_SYMBOLS), CORE_MAX)
 
     def test_core_from_seed_is_in_band(self):
-        rows = rows_from_symbols(CORE_SYMBOLS)
-        snap = build_core(rows, prefer_symbols=CORE_SYMBOLS)
+        prefer = prefer_for_core(CORE_SYMBOLS)
+        rows = rows_from_symbols(prefer)
+        snap = build_core(rows, prefer_symbols=prefer)
         self.assertGreaterEqual(snap.count, CORE_MIN)
         self.assertLessEqual(snap.count, CORE_MAX)
         self.assertEqual(snap.count, len(snap.symbols))
-        want, seen = [], set()
-        for s in CORE_SYMBOLS:
-            u = str(s).upper()
-            if u in seen:
-                continue
-            seen.add(u)
-            want.append(u)
-            if len(want) == CORE_MAX:
-                break
-        self.assertEqual(snap.symbols, want)
+        self.assertEqual(snap.symbols, prefer[:CORE_MAX])
         self.assertTrue(any("pending_G2" in n for n in snap.notes))
         self.assertTrue(all(r.get("adv20") is None for r in snap.rows))
+
+    def test_segment_mapped_names_are_in_core(self):
+        prefer = prefer_for_core(CORE_SYMBOLS)
+        snap = build_core(rows_from_symbols(prefer), prefer_symbols=prefer)
+        core = set(snap.symbols)
+        missing = [s for s in LOOKUP if s not in core]
+        self.assertEqual(missing, [])
+        self.assertIn("MANAPPURAM", core)
+        self.assertIn("AEGISLOG", core)
+        self.assertIn("TCS", core)
 
     def test_does_not_invent_liquidity(self):
         rows = rows_from_symbols(["AAA", "BBB"])

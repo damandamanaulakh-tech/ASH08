@@ -178,6 +178,7 @@ def build_core(
         notes.append("selection=prefer_rank_cap")
     ranked = sorted(pool, key=lambda r: (rank.get(r.symbol, 10**9), r.symbol))
     selected = ranked[:target_max]
+    notes.append("prefer=segment_map")
     notes.append(f"selected={len(selected)}")
     if len(selected) < target_min:
         notes.append("WARN_below_core_min")
@@ -211,6 +212,9 @@ def core_count_ok(data: Optional[dict], target_min: int = CORE_MIN, target_max: 
 def core_is_fresh(data: Optional[dict], ttl_days: int = CORE_TTL_DAYS) -> bool:
     if not core_count_ok(data):
         return False
+    notes = data.get("notes") or []
+    if "prefer=segment_map" not in notes:
+        return False
     dt = _parse_asof(str(data.get("asof") or ""))
     if dt is None:
         return False
@@ -218,6 +222,22 @@ def core_is_fresh(data: Optional[dict], ttl_days: int = CORE_TTL_DAYS) -> bool:
         dt = dt.replace(tzinfo=timezone.utc)
     age = datetime.now(timezone.utc) - dt
     return age.total_seconds() <= max(0, int(ttl_days)) * 86400
+
+
+def prefer_for_core(symbols: Sequence[str]) -> List[str]:
+    """Segment-mapped names first (must sit in Core), then remaining seed order."""
+    from ash08.segments import LOOKUP
+    mapped: List[str] = []
+    rest: List[str] = []
+    seen = set()
+    for raw in symbols or []:
+        sym = str(raw or "").strip().upper()
+        if not sym or sym in seen:
+            continue
+        seen.add(sym)
+        (mapped if sym in LOOKUP else rest).append(sym)
+    extra = [s for s in LOOKUP if s not in seen]
+    return mapped + extra + rest
 
 
 class UniverseManager:
@@ -261,8 +281,8 @@ class UniverseManager:
         existing = self.load_core()
         if not force and core_is_fresh(existing, ttl_days=ttl_days):
             return existing or {}, False
-        rows = rows_from_symbols(symbols)
-        core = build_core(rows, prefer_symbols=symbols)
+        rows = rows_from_symbols(prefer_for_core(symbols))
+        core = build_core(rows, prefer_symbols=prefer_for_core(symbols))
         save_snapshot(core, self.core_path)
         return core.to_dict(), True
 
