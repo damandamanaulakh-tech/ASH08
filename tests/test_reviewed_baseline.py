@@ -137,9 +137,12 @@ class G0ContractTests(unittest.TestCase):
                 for n in range(30)
             ]
             result = engine.auto_buy_selects(rows, price_map={f"SYM{n}": 100 for n in range(30)})
-            self.assertEqual(result["bought"], 19)
+            # ½-Kelly 5% of 5 Cr = ₹25L. 18 fills leave cash just above 5% after 0.10% buy cost.
+            # 19th is cash_reserve. Pre-cost this was 19.
+            self.assertEqual(result["bought"], 18)
             self.assertTrue(any(x.get("reason") == "cash_reserve" for x in result["skipped_detail"]))
-            self.assertEqual(result["open_count"], 19)
+            self.assertEqual(result["open_count"], 18)
+            self.assertGreaterEqual(engine.cash, engine._reserve_floor())
 
     def test_governor_shape(self):
         l0 = evaluate_governor()

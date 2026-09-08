@@ -295,6 +295,8 @@ class Handler(BaseHTTPRequestHandler):
                 "trade_plan": public_config()["trade_plan"],
                 "contract": public_config(),
                 "universe": (_mgr().status() if _mgr() else {}),
+                "build": "2026-09-09-yoy-factors",
+                "parameter_set_id": public_config()["parameter_set_id"],
                 "note": "G4 index tiles: Upstox quote or failed. Never a silent dash.",
             })
         if path == "/api/universe/core":
@@ -393,6 +395,15 @@ class Handler(BaseHTTPRequestHandler):
                 scan_core(auto_buy=False)
                 scan = MODS["store"]().load_scan() or {}
             return self.json(200, {"ok": True, "auto_paper": auto_buy_from_scan(scan), "upstox": upstox_status()})
+        if path in ("/api/history", "/api/history/yoy"):
+            from ash08.governor_lock import payload as hist
+            return self.json(200, hist())
+        if path in ("/api/factors", "/api/momentum"):
+            from ash08.momentum_factors import payload as mom
+            return self.json(200, mom())
+        if path in ("/api/gaps", "/api/infinity"):
+            from ash08.infinity_gaps import payload as gaps
+            return self.json(200, gaps())
         return self.serve_static(path)
 
     def api_paper_book(self):
@@ -424,7 +435,7 @@ class Handler(BaseHTTPRequestHandler):
             "exits": ["STOP_HIT", "TARGET_HIT", "MAX_HOLD", "GOVERNOR_CUT", "ROTATION"],
             "size": f"{cfg['max_name_pct']}% book x governor exposure",
         }
-        ltp_source = "upstox" if live else "paper_marks"
+        ltp_source = "upstox" if live else "no_live_ltp"
         return self.json(200, {
             "ok": True, "governor": gov, "plan": plan,
             "orders": book.get("orders") or [], "positions": eng.positions,
@@ -435,7 +446,16 @@ class Handler(BaseHTTPRequestHandler):
             "total_pnl": book.get("total_pnl") or 0,
             "ltp_source": ltp_source,
             "upstox": upstox_status(),
-            "note": "Orders FILLED = buy history. Open = live positions. P&L works without Upstox (paper_marks).",
+            "cash": book.get("cash"),
+            "equity": book.get("equity"),
+            "book_value": book.get("book_value"),
+            "deployed": book.get("deployed"),
+            "reserve_pct": book.get("reserve_pct"),
+            "buy_cost_pct": book.get("buy_cost_pct"),
+            "sell_cost_pct": book.get("sell_cost_pct"),
+            "max_open": book.get("max_open"),
+            "parameter_set_id": cfg.get("parameter_set_id"),
+            "note": "Cash is tracked. P&L needs live LTP. Missing quote ≠ fake fill.",
         })
 
     def api_pnl_tick(self):
@@ -452,7 +472,7 @@ class Handler(BaseHTTPRequestHandler):
             book = {"unrealized_pnl": 0, "realized_pnl": 0, "total_pnl": 0, "open": [], "open_count": 0}
         return self.json(200, {
             "ok": True,
-            "ltp_source": "upstox" if live else "paper_marks",
+            "ltp_source": "upstox" if live else "no_live_ltp",
             "unrealized_pnl": book.get("unrealized_pnl") or 0,
             "realized_pnl": book.get("realized_pnl") or 0,
             "total_pnl": book.get("total_pnl") or 0,
@@ -482,7 +502,9 @@ class Handler(BaseHTTPRequestHandler):
         price = _f(body.get("price")); stop = _f(body.get("stop")); target = _f(body.get("target"))
         if not price or price <= 0:
             live = quotes_for_symbols([symbol])
-            price = live.get(symbol) or REF_LTP.get(symbol, 100.0)
+            price = live.get(symbol)
+        if not price or price <= 0:
+            return self.json(400, {"ok": False, "error": "no_live_ltp — will not invent a fill"})
         try:
             order = eng.place_order(symbol=symbol, side="BUY", order_type="MARKET",
                                     qty=qty, fill_price=price, stop=stop, target=target, source="manual")
