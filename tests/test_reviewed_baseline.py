@@ -8,12 +8,16 @@ from unittest.mock import patch
 from ash08 import upstox_client
 from ash08.config import (
     BOOK_VALUE,
+    CASH_RESERVE_PCT,
+    CONSEC_LOSS_MAX,
     CORR_MAX,
     GOVERNOR_EXPOSURE,
+    KILL_DAILY_PCT,
     MAX_NAME_PCT,
     MAX_OPEN_POSITIONS,
     SCORE_SELECT,
     SCORE_WATCH,
+    SECTOR_MAX,
     STOP_PCT,
     TARGET_PCT,
     public_config,
@@ -47,7 +51,14 @@ class G0ContractTests(unittest.TestCase):
         self.assertEqual(STOP_PCT, 3.0)
         self.assertEqual(TARGET_PCT, 6.0)
         self.assertEqual(GOVERNOR_EXPOSURE, {"L0": 100.0, "L1": 70.0, "L2": 50.0, "L3": 25.0, "L4": 15.0})
+        self.assertEqual(KILL_DAILY_PCT, 2.0)
+        self.assertEqual(CASH_RESERVE_PCT, 30.0)
+        self.assertEqual(CONSEC_LOSS_MAX, 2)
+        self.assertEqual(SECTOR_MAX, 2)
         cfg = public_config()
+        self.assertEqual(cfg["risk"]["kill_daily_pct"], 2.0)
+        self.assertEqual(cfg["chitty"]["adopted"], 31)
+        self.assertFalse(cfg["chitty"]["decision_impact"])
         self.assertEqual(cfg["scanner"]["score_select"], 70.0)
         self.assertEqual(cfg["scanner"]["corr_max"], 0.70)
         self.assertNotEqual(cfg["scanner"]["score_select"], 67)
@@ -101,6 +112,11 @@ class G0ContractTests(unittest.TestCase):
         l4 = evaluate_governor(damage=True, q10=True, sell=True)
         self.assertEqual(l4.level, "L4_EXTREME")
         self.assertEqual(l4.exposure_pct, 15.0)
+        kill = evaluate_governor(day_pnl_pct=-2.0)
+        self.assertEqual(kill.level, "L4_EXTREME")
+        self.assertEqual(kill.rationale, "kill_daily")
+        consec = evaluate_governor(consec_losses=2)
+        self.assertEqual(consec.level, "L2_CONFIRMED")
         l3 = evaluate_governor(damage=True, q10=True, any_fii=True)
         self.assertEqual(l3.exposure_pct, 25.0)
 

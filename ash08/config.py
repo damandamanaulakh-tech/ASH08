@@ -60,6 +60,17 @@ GOVERNOR_EXPOSURE = {
     "L4": 15.0,
 }
 
+# ASH08-confirmed 2026-07-30 (Stock App / audit). Not AM07's 80-slot / −5 / +12 book.
+KILL_DAILY_PCT = 2.0
+CASH_RESERVE_PCT = 30.0
+DD_LADDER_PCT = (-5.0, -8.0, -10.0, -15.0, -20.0)
+CONSEC_LOSS_MAX = 2
+SECTOR_MAX = 2
+MCAP_MIN_CR = 5000.0  # DATA_NEEDED until fundamentals are wired — not a hard scan gate
+VOL_TIER_PCT = ((18.0, 20.0), (12.0, 16.0), (5.0, 10.0))  # composed under MAX_NAME_PCT
+TICKER_BLOCKLIST = ("YESBANK",)
+CHITTY_DECISION_IMPACT = False
+
 DATA_DIR = Path(os.environ.get("ASH08_DATA_DIR") or (ROOT / "ash08_data")).resolve()
 
 
@@ -76,6 +87,21 @@ def public_config() -> dict:
         "buy_cost_pct": BUY_COST_PCT,
         "sell_cost_pct": SELL_COST_PCT,
         "governor_exposure": dict(GOVERNOR_EXPOSURE),
+        "risk": {
+            "kill_daily_pct": KILL_DAILY_PCT,
+            "cash_reserve_pct": CASH_RESERVE_PCT,
+            "dd_ladder_pct": list(DD_LADDER_PCT),
+            "consec_loss_max": CONSEC_LOSS_MAX,
+            "sector_max": SECTOR_MAX,
+            "mcap_min_cr": MCAP_MIN_CR,
+            "mcap_status": "DATA_NEEDED",
+            "vol_tier_pct": [list(t) for t in VOL_TIER_PCT],
+            "blocklist": list(TICKER_BLOCKLIST),
+        },
+        "chitty": {
+            "adopted": 31,
+            "decision_impact": CHITTY_DECISION_IMPACT,
+        },
         "scanner": {
             "adv20_min": ADV20_MIN,
             "turnover_cr_min": TURNOVER_CR_MIN,

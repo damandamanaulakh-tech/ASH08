@@ -330,6 +330,9 @@ class Handler(BaseHTTPRequestHandler):
             payload = segment_snapshot(core, scan.get("rows") or [])
             payload["asof"] = scan.get("asof")
             return self.json(200, payload)
+        if path == "/api/chitty":
+            from ash08.chitty_adopted import registry_payload
+            return self.json(200, registry_payload())
         if path == "/api/piano" or path.startswith("/api/piano/"):
             from ash08.piano import piano_from_scan, piano_summary
             scan = {}

@@ -8,12 +8,17 @@ from typing import Any, Dict, List, Optional
 
 from ash08.config import (
     BOOK_VALUE as DEFAULT_BOOK,
+    CASH_RESERVE_PCT,
+    CONSEC_LOSS_MAX,
     GOVERNOR_EXPOSURE as EXPOSURE,
+    KILL_DAILY_PCT,
     MAX_HOLD_SESSIONS as MAX_HOLD_DAYS,
     MAX_NAME_PCT,
     MAX_OPEN_POSITIONS,
+    SECTOR_MAX,
     STOP_PCT,
     TARGET_PCT,
+    TICKER_BLOCKLIST,
 )
 
 LOG = logging.getLogger("ash08.paper")
@@ -98,14 +103,34 @@ class GovState:
         return asdict(self)
 
 
-def evaluate_governor(damage=False, q10=False, sell=False, any_fii=False) -> GovState:
+def evaluate_governor(
+    damage=False,
+    q10=False,
+    sell=False,
+    any_fii=False,
+    day_pnl_pct=None,
+    drawdown_pct=None,
+    consec_losses=None,
+) -> GovState:
+    if day_pnl_pct is not None and day_pnl_pct <= -KILL_DAILY_PCT:
+        return GovState("L4_EXTREME", EXPOSURE["L4"], "kill_daily")
+    if drawdown_pct is not None and drawdown_pct <= -20.0:
+        return GovState("L4_EXTREME", EXPOSURE["L4"], "dd_-20")
     confirms = sum([q10, sell, any_fii])
     if damage and q10 and sell:
         return GovState("L4_EXTREME", EXPOSURE["L4"], "Q10+sell")
+    if drawdown_pct is not None and drawdown_pct <= -15.0:
+        return GovState("L3_HIGH_SEVERITY", EXPOSURE["L3"], "dd_-15")
     if damage and confirms >= 2:
         return GovState("L3_HIGH_SEVERITY", EXPOSURE["L3"], ">=2 FII")
+    if consec_losses is not None and consec_losses >= CONSEC_LOSS_MAX:
+        return GovState("L2_CONFIRMED", EXPOSURE["L2"], "consec_loss")
+    if drawdown_pct is not None and drawdown_pct <= -8.0:
+        return GovState("L2_CONFIRMED", EXPOSURE["L2"], "dd_-8")
     if damage and confirms == 1:
         return GovState("L2_CONFIRMED", EXPOSURE["L2"], "1 FII")
+    if drawdown_pct is not None and drawdown_pct <= -5.0:
+        return GovState("L1_DAMAGE_ONLY", EXPOSURE["L1"], "dd_-5")
     if damage:
         return GovState("L1_DAMAGE_ONLY", EXPOSURE["L1"], "damage")
     return GovState("L0_NORMAL", EXPOSURE["L0"], "normal")
@@ -304,6 +329,18 @@ class PaperEngine:
         self._save()
         return [victim]
 
+    def _sector_open_count(self, segment) -> int:
+        seg = str(segment or "").strip()
+        if not seg:
+            return 0
+        n = 0
+        for p in self.positions:
+            if p.get("status") != "OPEN":
+                continue
+            if str(p.get("segment") or "") == seg:
+                n += 1
+        return n
+
     def auto_buy_selects(self, select_rows, price_map=None):
         price_map = price_map or {}
         already = self.open_symbols()
@@ -315,6 +352,15 @@ class PaperEngine:
                 continue
             sym = str(row.get("symbol") or "").strip().upper()
             if not sym:
+                continue
+            if sym in TICKER_BLOCKLIST:
+                skipped.append({"symbol": sym, "reason": "blocklist"})
+                continue
+            if self.governor.level == "L4_EXTREME":
+                skipped.append({"symbol": sym, "reason": "kill_or_l4"})
+                continue
+            if self._sector_open_count(row.get("segment")) >= SECTOR_MAX:
+                skipped.append({"symbol": sym, "reason": "sector_max"})
                 continue
             if sym in already:
                 skipped.append({"symbol": sym, "reason": "already_open"})
