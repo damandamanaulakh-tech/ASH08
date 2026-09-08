@@ -13,7 +13,7 @@ INDEX_SPECS = [
 
 
 def _norm_key(raw: str) -> str:
-    return str(raw or "").replace(" ", "").upper()
+    return str(raw or "").replace(" ", "").replace("|", ":").upper()
 
 
 def parse_quote_blob(blob: Any) -> Dict[str, Optional[float]]:

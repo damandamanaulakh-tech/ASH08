@@ -111,7 +111,9 @@ class HistoryStore:
     def refresh_symbol(self, symbol: str, instrument_key: Optional[str] = None) -> Dict[str, Any]:
         """Fetch Upstox daily bars. Returns status; never fabricates candles."""
         sym = str(symbol).upper()
-        key = instrument_key or f"NSE_EQ|{sym}"
+        key = instrument_key
+        if not key:
+            return {"symbol": sym, "ok": False, "error": "no instrument_key (need NSE_EQ|ISIN)", "bars": 0}
         to_d = _utc_now().date()
         from_d = to_d - timedelta(days=MOM_LOOKBACK_CAL_DAYS + 20)
         try:

@@ -94,28 +94,12 @@ def upstox_status():
 def quotes_for_symbols(symbols):
     if "fetch_quotes" not in MODS or not (os.environ.get("UPSTOX_ACCESS_TOKEN") or "").strip():
         return {}
-    keys = [f"NSE_EQ|{s}" for s in symbols if s]
-    if not keys:
-        return {}
     try:
-        raw = MODS["fetch_quotes"](keys)
+        from ash08.upstox_client import ltp_by_symbol
+        return ltp_by_symbol([str(s).upper() for s in (symbols or []) if s], DATA_DIR)
     except Exception as e:
         LOG.warning("quotes: %s", e)
         return {}
-    out = {}
-    for k, v in (raw or {}).items():
-        if not isinstance(v, dict):
-            continue
-        sym = k.split("|")[-1] if "|" in k else k
-        lp = v.get("last_price") or v.get("lastPrice")
-        if lp is None and isinstance(v.get("ohlc"), dict):
-            lp = v["ohlc"].get("close")
-        if lp is not None:
-            try:
-                out[str(sym).upper()] = float(lp)
-            except Exception:
-                pass
-    return out
 
 def auto_buy_from_scan(scan_dict):
     eng = get_engine()
@@ -235,14 +219,21 @@ def scan_core(auto_buy=False):
 
 def refresh_metrics(force=False):
     from ash08.history import HistoryStore
+    from ash08.upstox_client import load_eq_keymap
     symbols = core_symbols_live() or list(CORE_SYMBOLS[:CORE_MAX])
     store = HistoryStore(DATA_DIR)
-    results = store.refresh_many(symbols, force=force)
+    try:
+        km = load_eq_keymap(DATA_DIR)
+    except Exception as e:
+        LOG.warning("keymap: %s", e)
+        km = {}
+    results = store.refresh_many(symbols, instrument_keys=km, force=force)
     ok_n = sum(1 for r in results if r.get("ok") and not r.get("skipped"))
     return {
         "ok": True,
         "attempted": len(results),
         "fetched": ok_n,
+        "keymap": len(km),
         "results": results[:40],
         "upstox": upstox_status(),
     }

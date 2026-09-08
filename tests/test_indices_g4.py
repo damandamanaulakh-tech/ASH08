@@ -35,10 +35,10 @@ class IndicesG4Tests(unittest.TestCase):
     def test_quotes_fill_ltp(self):
         def fetch(keys):
             return {
-                "NSE_INDEX|Nifty 50": {"last_price": 22410.5, "net_change": 35.2},
-                "BSE_INDEX|SENSEX": {"last_price": 73800.0, "net_change": -12.0},
-                "NSE_INDEX|Nifty Bank": {"last_price": 48100.0, "net_change": 10.0},
-                "NSE_INDEX|India VIX": {"last_price": 13.4, "net_change": -0.2},
+                "NSE_INDEX:Nifty 50": {"last_price": 22410.5, "net_change": 35.2},
+                "BSE_INDEX:SENSEX": {"last_price": 73800.0, "net_change": -12.0},
+                "NSE_INDEX:Nifty Bank": {"last_price": 48100.0, "net_change": 10.0},
+                "NSE_INDEX:India VIX": {"last_price": 13.4, "net_change": -0.2},
             }
         out = fetch_index_tiles(fetch, True)
         self.assertEqual(out["status"], "ok")

@@ -9,6 +9,8 @@ import os
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List
 
 LOG = logging.getLogger("ash08.upstox")
@@ -80,6 +82,67 @@ def fetch_nse_equity_instruments() -> List[Dict[str, Any]]:
             "tick_size": float(r.get("tick_size") or r.get("tickSize") or 0.05),
         })
     LOG.info("NSE_EQ-like instruments: %s", len(out))
+    return out
+
+
+def _norm_ikey(raw: str) -> str:
+    return str(raw or "").replace(" ", "").replace("|", ":").upper()
+
+
+def load_eq_keymap(data_dir: str | Path = "ash08_data") -> Dict[str, str]:
+    """trading_symbol → NSE_EQ|<ISIN>. Cached. Never invent ISINs."""
+    root = Path(data_dir)
+    root.mkdir(parents=True, exist_ok=True)
+    path = root / "nse_eq_keys.json"
+    if path.exists():
+        age = datetime.now(timezone.utc).timestamp() - path.stat().st_mtime
+        if age < 20 * 3600:
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(data, dict) and len(data) > 50:
+                    return {str(k).upper(): str(v) for k, v in data.items() if k and v}
+            except Exception as e:
+                LOG.warning("keymap cache: %s", e)
+    rows = fetch_nse_equity_instruments()
+    km: Dict[str, str] = {}
+    for r in rows:
+        sym = str(r.get("symbol") or "").upper()
+        key = str(r.get("instrument_key") or "")
+        if sym and key:
+            km[sym] = key
+    if km:
+        path.write_text(json.dumps(km), encoding="utf-8")
+        LOG.info("eq keymap %s names", len(km))
+    return km
+
+
+def ltp_by_symbol(symbols: List[str], data_dir: str | Path = "ash08_data") -> Dict[str, float]:
+    km = load_eq_keymap(data_dir)
+    keys = []
+    for raw in symbols or []:
+        sym = str(raw or "").upper()
+        if sym in km:
+            keys.append(km[sym])
+    if not keys:
+        return {}
+    raw = fetch_quotes(keys)
+    rev = {_norm_ikey(v): k for k, v in km.items()}
+    out: Dict[str, float] = {}
+    for k, v in (raw or {}).items():
+        if not isinstance(v, dict):
+            continue
+        lp = v.get("last_price") or v.get("lastPrice")
+        if lp is None and isinstance(v.get("ohlc"), dict):
+            lp = v["ohlc"].get("close")
+        if lp is None:
+            continue
+        sym = rev.get(_norm_ikey(k))
+        if not sym:
+            continue
+        try:
+            out[sym] = float(lp)
+        except Exception:
+            pass
     return out
 
 
