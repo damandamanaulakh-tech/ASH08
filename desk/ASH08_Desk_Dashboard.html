@@ -214,18 +214,19 @@ table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:9px 10px;
 <div class="card"><h4>Store</h4><div class="row"><span class="muted">Backend</span><strong>Local + Supabase</strong></div></div>
 </div></section>
 <section class="view" id="view-segments">
-<div class="grid3">
-<div class="card"><h4>IT</h4><p class="muted">INFY · TCS · HCLTECH</p></div>
-<div class="card"><h4>Finance</h4><p class="muted">HDFCBANK · ICICIBANK · SBIN</p></div>
-<div class="card"><h4>Energy</h4><p class="muted">RELIANCE · POWERGRID</p></div>
-<div class="card"><h4>Auto</h4><p class="muted">TATAMOTORS · MARUTI</p></div>
-<div class="card"><h4>Metals</h4><p class="muted">TATASTEEL · HINDALCO</p></div>
-<div class="card"><h4>Defence</h4><p class="muted">HAL · BEL · MTARTECH</p></div>
-</div></section>
+<div class="panel-h" style="margin-bottom:10px;border:0;background:transparent;padding:0"><h3>Segments</h3><span class="muted" id="seg-note">documented map · Core ∩ last scan</span></div>
+<div class="grid3" id="seg-cards">
+<div class="card"><h4>Oil</h4><p class="muted">loading…</p></div>
+<div class="card"><h4>Gold</h4><p class="muted">loading…</p></div>
+<div class="card"><h4>Metals</h4><p class="muted">loading…</p></div>
+<div class="card"><h4>IT</h4><p class="muted">loading…</p></div>
+<div class="card"><h4>Finance</h4><p class="muted">loading…</p></div>
+</div>
+</section>
 </main></div>
 <div class="footer-bar"><span>ASH08</span><span id="ft-core">Core —</span><span id="ft-open">Open 0</span><span>Open ≠ Order history</span></div>
 <script>
-function showView(id){document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));const v=document.getElementById('view-'+id);if(v)v.classList.add('active');const b=document.querySelector('nav button[data-view="'+id+'"]');if(b)b.classList.add('active');if(id==='positions'||id==='home'){loadBook();loadIndices();}if(id==='watchlist')loadWatch();if(id==='piano'){loadPianoSummary();selectNote(document.querySelector('.note.active')||document.querySelector('.note'), (document.querySelector('.note.active')||document.querySelector('.note')).dataset.param);}}
+function showView(id){document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));const v=document.getElementById('view-'+id);if(v)v.classList.add('active');const b=document.querySelector('nav button[data-view="'+id+'"]');if(b)b.classList.add('active');if(id==='positions'||id==='home'){loadBook();loadIndices();}if(id==='watchlist')loadWatch();if(id==='segments')loadSegments();if(id==='piano'){loadPianoSummary();selectNote(document.querySelector('.note.active')||document.querySelector('.note'), (document.querySelector('.note.active')||document.querySelector('.note')).dataset.param);}}
 document.querySelectorAll('nav button').forEach(btn=>btn.addEventListener('click',()=>showView(btn.dataset.view)));
 function fillPianoList(el, rows, emptyScan){
   if(!rows||!rows.length){el.innerHTML='<div class="muted">'+(emptyScan?'Empty scan':'None')+'</div>';return;}
@@ -277,6 +278,28 @@ async function loadIndices(){
       const ch=document.getElementById('idx-'+id+'-chg');
       if(ch)ch.textContent='request failed';
     });
+  }
+}
+async function loadSegments(){
+  try{
+    const r=await fetch('/api/segments');
+    const d=await r.json();
+    const host=document.getElementById('seg-cards');
+    const segs=d.segments||[];
+    if(!segs.length){host.innerHTML='<div class="card"><p class="muted">No segments</p></div>';return;}
+    host.innerHTML=segs.map(s=>{
+      const picks=(s.select||[]).map(x=>x.symbol).slice(0,8).join(' · ')||'no SELECT';
+      return '<div class="card"><h4>'+s.segment+'</h4>'
+        +'<div class="row"><span class="muted">In Core</span><strong>'+(s.core_count||0)+'</strong></div>'
+        +'<div class="row"><span class="muted">SELECT</span><strong>'+(s.select_count||0)+'</strong></div>'
+        +'<div class="row"><span class="muted">WATCH / UNKNOWN</span><span>'+(s.watch_count||0)+' / '+(s.unknown_count||0)+'</span></div>'
+        +'<p class="muted">'+picks+'</p></div>';
+    }).join('');
+    const n=document.getElementById('seg-note');
+    if(n) n.textContent='Core '+(d.core_n||0)+' · mapped '+(d.core_n-(d.unmapped_core||0))+' · unmapped '+(d.unmapped_core||0);
+  }catch(e){
+    const host=document.getElementById('seg-cards');
+    if(host) host.innerHTML='<div class="card"><p class="muted">segments request failed</p></div>';
   }
 }
 async function loadPianoSummary(){

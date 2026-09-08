@@ -327,6 +327,18 @@ class Handler(BaseHTTPRequestHandler):
             payload = fetch_index_tiles(MODS["fetch_quotes"], bool(ux.get("token_set")))
             payload["upstox"] = ux
             return self.json(200, payload)
+        if path == "/api/segments":
+            from ash08.segments import segment_snapshot
+            core = core_symbols_live()
+            scan = {}
+            if "store" in MODS:
+                try:
+                    scan = MODS["store"]().load_scan() or {}
+                except Exception:
+                    scan = {}
+            payload = segment_snapshot(core, scan.get("rows") or [])
+            payload["asof"] = scan.get("asof")
+            return self.json(200, payload)
         if path == "/api/piano" or path.startswith("/api/piano/"):
             from ash08.piano import piano_from_scan, piano_summary
             scan = {}

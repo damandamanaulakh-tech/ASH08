@@ -29,6 +29,7 @@ ASH08 is a paper-only NSE desk. Own repo. Not AshStocks.
 - Scan **inputs** are measured from cached/Upstox daily bars, or **UNKNOWN**. No `i % 9` momentum.
 - Piano click lists **passed / failed / UNKNOWN** from the last scan (empty scan = empty lists).
 - Index tiles: Upstox quote or **failed**. No silent dash.
+- Segments: Oil / Gold / Metals / IT / Finance from a documented map ∩ Core + last scan.
 - LTP is Upstox only. Missing quote ≠ fake fill.
 
 ## Run

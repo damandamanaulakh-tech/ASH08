@@ -50,6 +50,7 @@ METRICS_REFRESH_BATCH = 40
 
 # G4 — documented Upstox index keys (see ash08/indices.py)
 INDEX_POLICY_ID = "ash08-indices-g4-v1"
+SEGMENT_POLICY_ID = "ash08-segments-g5-v1"
 
 GOVERNOR_EXPOSURE = {
     "L0": 100.0,
@@ -106,6 +107,11 @@ def public_config() -> dict:
             "policy_id": INDEX_POLICY_ID,
             "source": "upstox_only",
             "on_error": "failed",
+        },
+        "segments": {
+            "policy_id": SEGMENT_POLICY_ID,
+            "names": ["Oil", "Gold", "Metals", "IT", "Finance"],
+            "membership": "documented_map_only",
         },
         "trade_plan": {
             "stop_pct": STOP_PCT,
