@@ -117,6 +117,18 @@ class G0ContractTests(unittest.TestCase):
         self.assertIn("instrument_key=NSE_EQ|INE467B01029", observed["url"])
         self.assertIn("NSE_EQ|INE467B01029", result)
 
+    def test_upstox_sends_browser_user_agent(self):
+        seen = {}
+
+        def fake_urlopen(request, timeout=0):
+            seen["ua"] = request.get_header("User-agent") or request.headers.get("User-Agent")
+            return FakeResponse({"data": {}})
+
+        with patch.dict(os.environ, {"UPSTOX_ACCESS_TOKEN": "token"}, clear=False):
+            with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+                upstox_client.fetch_quotes(["NSE_EQ|INE467B01029"])
+        self.assertIn("Chrome", seen.get("ua") or "")
+
 
 if __name__ == "__main__":
     unittest.main()

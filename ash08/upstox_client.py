@@ -14,6 +14,11 @@ from typing import Any, Dict, List
 LOG = logging.getLogger("ash08.upstox")
 NSE_INSTRUMENTS_URL = "https://assets.upstox.com/market-quote/instruments/exchange/NSE.json.gz"
 API_BASE = "https://api.upstox.com/v2"
+# Cloudflare 1010 blocks Python-urllib UA. Browser UA reaches the API (401 = token, 1010 = WAF).
+BROWSER_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+)
 
 
 def _token() -> str:
@@ -21,7 +26,12 @@ def _token() -> str:
 
 
 def _headers(auth: bool = True) -> Dict[str, str]:
-    h = {"Accept": "application/json"}
+    h = {
+        "Accept": "application/json",
+        "Accept-Language": "en-IN,en;q=0.9",
+        "User-Agent": BROWSER_UA,
+        "Api-Version": "2.0",
+    }
     if auth:
         tok = _token()
         if tok:
@@ -81,7 +91,7 @@ def fetch_quotes(instrument_keys: List[str]) -> Dict[str, Any]:
     for i in range(0, len(instrument_keys), 50):
         part = instrument_keys[i:i+50]
         keys = ",".join(part)
-        url = f"{API_BASE}/market-quote/quotes?instrument_key={urllib.request.quote(keys, safe=',|')}"
+        url = f"{API_BASE}/market-quote/quotes?instrument_key={urllib.parse.quote(keys, safe=',|')}"
         req = urllib.request.Request(url, headers=_headers(True))
         try:
             with urllib.request.urlopen(req, timeout=60) as resp:
