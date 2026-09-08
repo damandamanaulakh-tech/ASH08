@@ -39,7 +39,10 @@ class PianoG3Tests(unittest.TestCase):
 
     def test_every_row_emits_all_scan_gates(self):
         hits = {h.param_id for h in evaluate_stock(StockMetrics("GAP")).hits}
-        for pid in ("P-ADV20", "P-TURNOVER", "P-STALE", "P-MOM", "P-CORR", "P-SCORE", "P-SELECT"):
+        for pid in (
+            "P-ADV20", "P-TURNOVER", "P-STALE", "P-MOM", "P-CORR",
+            "P-SCORE", "P-NEAR_MISS", "P-ORDER", "P-SELECT",
+        ):
             self.assertIn(pid, hits)
 
     def test_gov_is_not_a_name_gate(self):

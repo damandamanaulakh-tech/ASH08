@@ -15,6 +15,8 @@ from ash08.config import (
     KILL_DAILY_PCT,
     MAX_NAME_PCT,
     MAX_OPEN_POSITIONS,
+    POSITION_SIZE_VALUE,
+    SCORE_NEAR_MISS,
     SCORE_SELECT,
     SCORE_WATCH,
     SECTOR_MAX,
@@ -42,11 +44,13 @@ class FakeResponse:
 
 class G0ContractTests(unittest.TestCase):
     def test_locked_numbers(self):
-        self.assertEqual(BOOK_VALUE, 5_000_000)
+        self.assertEqual(BOOK_VALUE, 50_000_000)
         self.assertEqual(SCORE_SELECT, 70.0)
+        self.assertEqual(SCORE_NEAR_MISS, 68.0)
         self.assertEqual(SCORE_WATCH, 55.0)
         self.assertEqual(CORR_MAX, 0.70)
-        self.assertEqual(MAX_OPEN_POSITIONS, 10)
+        self.assertEqual(MAX_OPEN_POSITIONS, 500)
+        self.assertEqual(POSITION_SIZE_VALUE, 100_000.0)
         self.assertEqual(MAX_NAME_PCT, 2.5)
         self.assertEqual(STOP_PCT, 3.0)
         self.assertEqual(TARGET_PCT, 6.0)
@@ -89,21 +93,33 @@ class G0ContractTests(unittest.TestCase):
         # mom 0.18 -> 86; quality 75 -> 0.65*86 + 0.35*75 = 82.15
         self.assertEqual(compute_final_score(0.18, 75), 82.15)
 
-    def test_50_lakh_sizing_is_32_shares_at_3840(self):
-        with tempfile.TemporaryDirectory() as directory:
-            engine = PaperEngine(directory, book_value=5_000_000)
-            qty = engine.size_qty(50, 3840)
-            self.assertEqual(qty, 32)
-            self.assertEqual(int(5_000_000 * 0.025 // 3840), 32)
+    def test_near_miss_at_68_is_live_gate(self):
+        row = evaluate_stock(StockMetrics("NEAR", 800_000, 25, 1, 0.0885, 70.0, 0.4))
+        self.assertEqual(row.decision, "NEAR_MISS")
+        self.assertGreaterEqual(row.score, SCORE_NEAR_MISS)
+        self.assertLess(row.score, SCORE_SELECT)
+        self.assertTrue(row.hard_pass)
 
-    def test_max_open_skips_eleventh_auto_buy(self):
+    def test_order_sell_blocks_select(self):
+        row = evaluate_stock(StockMetrics("DUMP", 800_000, 25, 1, 0.18, 75, 0.4, order_signal="sell"))
+        self.assertEqual(row.decision, "REJECT")
+        self.assertIn("P-ORDER", [h.param_id for h in row.hits if h.status == "FAIL"])
+
+    def test_5cr_sizing_is_26_shares_at_3840(self):
         with tempfile.TemporaryDirectory() as directory:
-            engine = PaperEngine(directory, book_value=5_000_000)
-            rows = [{"symbol": f"SYM{n}", "ltp": 100, "score": 80} for n in range(12)]
-            result = engine.auto_buy_selects(rows, price_map={f"SYM{n}": 100 for n in range(12)})
-            self.assertEqual(result["bought"], 10)
+            engine = PaperEngine(directory, book_value=50_000_000)
+            qty = engine.size_qty(50, 3840)
+            self.assertEqual(qty, 26)
+            self.assertEqual(int(100_000 // 3840), 26)
+
+    def test_max_open_skips_past_500(self):
+        with tempfile.TemporaryDirectory() as directory:
+            engine = PaperEngine(directory, book_value=50_000_000)
+            rows = [{"symbol": f"SYM{n}", "ltp": 100, "score": 80} for n in range(502)]
+            result = engine.auto_buy_selects(rows, price_map={f"SYM{n}": 100 for n in range(502)})
+            self.assertEqual(result["bought"], 500)
             self.assertGreaterEqual(result["skipped"], 2)
-            self.assertEqual(result["open_count"], 10)
+            self.assertEqual(result["open_count"], 500)
 
     def test_governor_shape(self):
         l0 = evaluate_governor()

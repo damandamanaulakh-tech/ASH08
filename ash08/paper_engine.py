@@ -15,6 +15,7 @@ from ash08.config import (
     MAX_HOLD_SESSIONS as MAX_HOLD_DAYS,
     MAX_NAME_PCT,
     MAX_OPEN_POSITIONS,
+    POSITION_SIZE_VALUE,
     SECTOR_MAX,
     STOP_PCT,
     TARGET_PCT,
@@ -165,10 +166,14 @@ class PaperEngine:
             )
 
     def size_qty(self, qty, price):
-        if price is None or price <= 0 or qty is None or qty <= 0:
+        if price is None or price <= 0:
             return 0
-        max_n = self.book_value * (MAX_NAME_PCT / 100) * (self.governor.exposure_pct / 100)
-        return max(0, min(int(qty), int(max_n // price)))
+        notional = POSITION_SIZE_VALUE * (self.governor.exposure_pct / 100.0)
+        name_cap = self.book_value * (MAX_NAME_PCT / 100.0) * (self.governor.exposure_pct / 100.0)
+        sized = int(min(notional, name_cap) // price)
+        if qty and int(qty) > 0:
+            sized = max(sized, 0)
+        return max(0, sized)
 
     def place_order(
         self,

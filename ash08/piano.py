@@ -7,6 +7,7 @@ from ash08.config import (
     ADV20_MIN,
     CORR_MAX,
     MOM_MIN,
+    SCORE_NEAR_MISS,
     SCORE_SELECT,
     STALE_MAX_DAYS,
     TURNOVER_CR_MIN,
@@ -22,6 +23,9 @@ ALIASES = {
     "score": "P-SCORE",
     "corr": "P-CORR",
     "select": "P-SELECT",
+    "near": "P-NEAR_MISS",
+    "nearmiss": "P-NEAR_MISS",
+    "order": "P-ORDER",
     "gov": "P-GOV",
 }
 
@@ -33,6 +37,8 @@ DEFINITIONS = {
     "P-SCORE": "0.65×mom + 0.35×quality (measured)",
     "P-CORR": f"max |corr| vs open book ≤ {CORR_MAX}",
     "P-SELECT": f"hard pass and score ≥ {SCORE_SELECT:g}",
+    "P-NEAR_MISS": f"hard pass and {SCORE_NEAR_MISS:g} ≤ score < {SCORE_SELECT:g} — live buy gate",
+    "P-ORDER": "NSE bulk/block/buyback: net buy PASS, net sell FAIL (blocks), none UNKNOWN (not blocking)",
     "P-GOV": "book-level L0–L4 exposure — not a name gate",
 }
 

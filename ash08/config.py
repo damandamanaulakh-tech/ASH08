@@ -9,11 +9,12 @@ import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PARAMETER_SET_ID = "ash08-50l-g0-v1"
+PARAMETER_SET_ID = "ash08-5cr-g6-v1"
 
 # --- locked. do not env-override (old Render env had 67/60) ---
-BOOK_VALUE = 5_000_000.0
-MAX_OPEN_POSITIONS = 10
+BOOK_VALUE = 50_000_000.0  # ₹5 Cr owner 2026-09-09
+MAX_OPEN_POSITIONS = 500
+POSITION_SIZE_VALUE = 100_000.0  # 5 Cr / 500
 MAX_NAME_PCT = 2.5
 MAX_GROSS_PCT = 100.0
 STOP_PCT = 3.0
@@ -28,6 +29,7 @@ STALE_MAX_DAYS = 7.0
 MOM_MIN = 0.0
 CORR_MAX = 0.70
 SCORE_SELECT = 70.0
+SCORE_NEAR_MISS = 68.0  # live gate: 68–70 buys as NEAR_MISS
 SCORE_WATCH = 55.0
 MOM_WEIGHT = 0.65
 QUAL_WEIGHT = 0.35
@@ -79,6 +81,7 @@ def public_config() -> dict:
         "parameter_set_id": PARAMETER_SET_ID,
         "book_value": BOOK_VALUE,
         "max_open_positions": MAX_OPEN_POSITIONS,
+        "position_size_value": POSITION_SIZE_VALUE,
         "max_name_pct": MAX_NAME_PCT,
         "max_gross_pct": MAX_GROSS_PCT,
         "stop_pct": STOP_PCT,
@@ -109,6 +112,7 @@ def public_config() -> dict:
             "mom_min": MOM_MIN,
             "corr_max": CORR_MAX,
             "score_select": SCORE_SELECT,
+            "score_near_miss": SCORE_NEAR_MISS,
             "score_watch": SCORE_WATCH,
             "mom_weight": MOM_WEIGHT,
             "quality_weight": QUAL_WEIGHT,

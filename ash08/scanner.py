@@ -15,11 +15,13 @@ from ash08.config import (
     MOM_MIN,
     MOM_WEIGHT,
     QUAL_WEIGHT,
+    SCORE_NEAR_MISS,
     SCORE_SELECT,
     SCORE_WATCH,
     STALE_MAX_DAYS,
     TURNOVER_CR_MIN,
 )
+from ash08.orders import load_order_map, signal_for
 
 LOG = logging.getLogger("ash08.scanner")
 
@@ -35,6 +37,7 @@ class StockMetrics:
     max_corr_vs_book: Optional[float] = None
     segment: str = ""
     ltp: Optional[float] = None
+    order_signal: Optional[str] = None
 
 
 @dataclass
@@ -70,6 +73,7 @@ class ScanSnapshot:
     watch_count: int
     reject_count: int
     unknown_count: int = 0
+    near_miss_count: int = 0
     rows: List[Dict[str, Any]] = field(default_factory=list)
     notes: List[str] = field(default_factory=list)
 
@@ -92,7 +96,10 @@ def compute_final_score(mom_6m, quality_score):
 
 
 MANDATORY = ("adv20", "turnover_cr_5d", "stale_days", "mom_6m", "quality_score")
-SCAN_GATES = ("P-ADV20", "P-TURNOVER", "P-STALE", "P-MOM", "P-CORR", "P-SCORE", "P-SELECT")
+SCAN_GATES = (
+    "P-ADV20", "P-TURNOVER", "P-STALE", "P-MOM", "P-CORR",
+    "P-SCORE", "P-NEAR_MISS", "P-ORDER", "P-SELECT",
+)
 
 
 def evaluate_stock(m: StockMetrics) -> ScanRow:
@@ -119,6 +126,16 @@ def evaluate_stock(m: StockMetrics) -> ScanRow:
         c_ok = m.max_corr_vs_book <= CORR_MAX
         add("P-CORR", "PASS" if c_ok else "FAIL", f"corr={m.max_corr_vs_book} max={CORR_MAX}")
 
+    if m.order_signal is None:
+        add("P-ORDER", "UNKNOWN", "no bulk/block/buyback evidence")
+        o_block = False
+    elif str(m.order_signal).lower() == "sell":
+        add("P-ORDER", "FAIL", "net bulk sell")
+        o_block = True
+    else:
+        add("P-ORDER", "PASS", f"order={m.order_signal}")
+        o_block = False
+
     unknown_fields = [k for k, v in [
         ("adv20", adv_ok), ("turnover_cr_5d", t_ok), ("stale_days", s_ok),
         ("mom_6m", mom_ok), ("corr", c_ok),
@@ -134,21 +151,34 @@ def evaluate_stock(m: StockMetrics) -> ScanRow:
     else:
         add("P-SCORE", "UNKNOWN", "UNKNOWN score (mom or quality missing)")
 
-    hard = all(v is True for v in (adv_ok, t_ok, s_ok, mom_ok, c_ok))
+    hard = all(v is True for v in (adv_ok, t_ok, s_ok, mom_ok, c_ok)) and not o_block
     coverage = round(sum(1 for v in (adv_ok, t_ok, s_ok, mom_ok, c_ok) if v is not None) / 5.0, 2)
 
     if unknown_fields:
         decision, reason = "UNKNOWN", "missing " + ",".join(unknown_fields)
         hard = False
+    elif o_block:
+        decision, reason = "REJECT", "P-ORDER net bulk sell"
     elif hard and score >= SCORE_SELECT:
         decision, reason = "SELECT", f"score {score} >= {SCORE_SELECT}"
+    elif hard and score >= SCORE_NEAR_MISS:
+        decision, reason = "NEAR_MISS", f"score {score} in 68–70 near-miss gate"
     elif hard and score >= SCORE_WATCH:
         decision, reason = "WATCH", f"score {score} in watch band"
     else:
         decision, reason = "REJECT", "hard fail or low score"
 
+    if decision == "NEAR_MISS":
+        add("P-NEAR_MISS", "PASS", reason)
+    elif score_ready and SCORE_NEAR_MISS <= score < SCORE_SELECT:
+        add("P-NEAR_MISS", "FAIL", f"score {score} near-miss band but hard fail")
+    else:
+        add("P-NEAR_MISS", "FAIL" if score_ready else "UNKNOWN", reason)
+
     if decision == "SELECT":
         add("P-SELECT", "PASS", reason)
+    elif decision == "NEAR_MISS":
+        add("P-SELECT", "FAIL", "near-miss live gate, not full SELECT")
     elif decision == "UNKNOWN":
         add("P-SELECT", "UNKNOWN", reason)
     else:
@@ -171,14 +201,16 @@ def run_scan(
     metrics: Sequence[StockMetrics],
     universe_bucket: str = "core",
 ) -> ScanSnapshot:
-    rows = [evaluate_stock(m) for m in metrics]
+    pack = load_order_map()
+    filled = []
+    for m in metrics:
+        if m.order_signal is None:
+            m.order_signal = signal_for(m.symbol, pack)
+        filled.append(evaluate_stock(m))
+    rank = {"SELECT": 0, "NEAR_MISS": 1, "WATCH": 2, "UNKNOWN": 3, "REJECT": 4}
     rows_sorted = sorted(
-        rows,
-        key=lambda r: (
-            0 if r.decision == "SELECT" else 1 if r.decision == "WATCH" else 2 if r.decision == "UNKNOWN" else 3,
-            -r.score,
-            r.symbol,
-        ),
+        filled,
+        key=lambda r: (rank.get(r.decision, 9), -r.score, r.symbol),
     )
     return ScanSnapshot(
         asof=_utc_now_iso(),
@@ -188,12 +220,16 @@ def run_scan(
         watch_count=sum(1 for r in rows_sorted if r.decision == "WATCH"),
         reject_count=sum(1 for r in rows_sorted if r.decision == "REJECT"),
         unknown_count=sum(1 for r in rows_sorted if r.decision == "UNKNOWN"),
+        near_miss_count=sum(1 for r in rows_sorted if r.decision == "NEAR_MISS"),
         rows=[r.to_dict() for r in rows_sorted],
         notes=[
             f"SCORE_SELECT={SCORE_SELECT}",
+            f"SCORE_NEAR_MISS={SCORE_NEAR_MISS}",
             f"SCORE_WATCH={SCORE_WATCH}",
             f"CORR_MAX={CORR_MAX}",
             "missing_metrics=UNKNOWN",
+            "near_miss=live_gate",
+            "order_family=bulk_block_buyback",
         ],
     )
 

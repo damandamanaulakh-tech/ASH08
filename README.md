@@ -6,18 +6,20 @@ ASH08 is a paper-only NSE desk. Own repo. Not AshStocks.
 
 | Item | Value |
 |------|--------|
-| Book | ₹50,00,000 |
+| Book | ₹5,00,00,000 (5 Cr) |
 | SELECT | score ≥ **70** |
-| WATCH | **55** ≤ score < 70 |
+| NEAR_MISS (live buy) | **68** ≤ score < 70 |
+| WATCH | **55** ≤ score < 68 |
 | Corr vs book | ≤ **0.70** |
 | ADV20 | ≥ 2,00,000 |
 | 5d turnover | ≥ ₹5 Cr |
 | Stale | ≤ 7 days |
 | 6M momentum | > 0 |
-| Per-name cap | 2.5% × governor exposure |
-| Max open | 10 |
+| Size | ₹1,00,000 / name (5 Cr / 500) |
+| Max open | 500 |
 | Stop / target / hold | −3% / +6% / 15 sessions |
 | Governor L0–L4 | 100 / 70 / 50 / 25 / 15 % |
+| Order family | NSE bulk / block / buyback — net sell blocks |
 
 `backup/aug24-fail-closed` is archive (SELECT 67 / WATCH 60). It is not `main`.
 

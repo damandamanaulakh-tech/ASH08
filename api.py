@@ -105,13 +105,16 @@ def auto_buy_from_scan(scan_dict):
     eng = get_engine()
     if not eng or not hasattr(eng, "auto_buy_selects"):
         return None
-    selects = [r for r in (scan_dict.get("rows") or []) if str(r.get("decision") or "").upper() == "SELECT"]
-    if not selects:
+    picks = [
+        r for r in (scan_dict.get("rows") or [])
+        if str(r.get("decision") or "").upper() in ("SELECT", "NEAR_MISS")
+    ]
+    if not picks:
         return {"bought": 0, "skipped": 0, "open_count": len(eng.open_symbols())}
-    live = quotes_for_symbols([r.get("symbol") for r in selects])
+    live = quotes_for_symbols([r.get("symbol") for r in picks])
     priced = []
     skipped_px = []
-    for r in selects:
+    for r in picks:
         sym = str(r.get("symbol") or "").upper()
         px = live.get(sym)
         if px is None:
@@ -207,6 +210,7 @@ def scan_core(auto_buy=False):
         "ok": True,
         "core_count": len(symbols),
         "select": snap.select_count,
+        "near_miss": getattr(snap, "near_miss_count", 0),
         "watch": snap.watch_count,
         "reject": snap.reject_count,
         "unknown": getattr(snap, "unknown_count", 0),
@@ -333,6 +337,14 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/chitty":
             from ash08.chitty_adopted import registry_payload
             return self.json(200, registry_payload())
+        if path == "/api/orders" or path.startswith("/api/orders/"):
+            from ash08.orders import evidence_for, load_order_map
+            extra = path[len("/api/orders/"):] if path.startswith("/api/orders/") else ""
+            param = extra or (qs.get("symbol") or [""])[0]
+            if not param:
+                pack = load_order_map()
+                return self.json(200, {"asof": pack.get("asof"), "n": pack.get("n"), "source": pack.get("source")})
+            return self.json(200, evidence_for(param))
         if path == "/api/piano" or path.startswith("/api/piano/"):
             from ash08.piano import piano_from_scan, piano_summary
             scan = {}
