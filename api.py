@@ -287,6 +287,13 @@ class Handler(BaseHTTPRequestHandler):
                 try: store_info = MODS["store"]().health()
                 except Exception as e: store_info = {"error": str(e)}
             ux = upstox_status()
+            advise_n = {}
+            try:
+                from ash08.advisory import payload as advise
+                a = advise()
+                advise_n = {"buy": a.get("buy_n"), "watch": a.get("watch_n"), "asof": a.get("asof")}
+            except Exception as e:
+                advise_n = {"error": str(e)}
             return self.json(200, {
                 "ok": True, "service": "ash08-desk", "modules": sorted(MODS.keys()),
                 "core_seed_count": CORE_COUNT, "core_count": len(core_symbols_live()),
@@ -295,9 +302,10 @@ class Handler(BaseHTTPRequestHandler):
                 "trade_plan": public_config()["trade_plan"],
                 "contract": public_config(),
                 "universe": (_mgr().status() if _mgr() else {}),
-                "build": "2026-09-09-yoy-factors",
+                "build": "2026-09-09-advisory",
                 "parameter_set_id": public_config()["parameter_set_id"],
-                "note": "G4 index tiles: Upstox quote or failed. Never a silent dash.",
+                "advise": advise_n,
+                "note": "Front is Today's Advice. Tape close is the reference. Paper fill needs live LTP.",
             })
         if path == "/api/universe/core":
             core = ensure_core(force=False)
@@ -401,6 +409,9 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/api/factors", "/api/momentum"):
             from ash08.momentum_factors import payload as mom
             return self.json(200, mom())
+        if path in ("/api/advise", "/api/advice", "/api/picks"):
+            from ash08.advisory import payload as advise
+            return self.json(200, advise())
         if path in ("/api/gaps", "/api/infinity"):
             from ash08.infinity_gaps import payload as gaps
             return self.json(200, gaps())

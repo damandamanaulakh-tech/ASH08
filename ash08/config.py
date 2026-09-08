@@ -75,7 +75,8 @@ CASH_RESERVE_PCT = 5.0
 DD_LADDER_PCT = (-5.0, -8.0, -10.0, -15.0, -20.0)
 CONSEC_LOSS_MAX = 2
 SECTOR_MAX = 2
-MCAP_MIN_CR = 5000.0  # DATA_NEEDED until fundamentals are wired — not a hard scan gate
+MCAP_MIN_CR = 5000.0  # no rupee mcap field; Nifty 200 membership is the proxy — not a hard scan gate
+MCAP_STATUS = "PROXY_N200"
 VOL_TIER_PCT = ((18.0, 20.0), (12.0, 16.0), (5.0, 10.0))  # composed under MAX_NAME_PCT
 TICKER_BLOCKLIST = ("YESBANK",)
 CHITTY_DECISION_IMPACT = False
@@ -103,7 +104,8 @@ def public_config() -> dict:
             "consec_loss_max": CONSEC_LOSS_MAX,
             "sector_max": SECTOR_MAX,
             "mcap_min_cr": MCAP_MIN_CR,
-            "mcap_status": "DATA_NEEDED",
+            "mcap_status": MCAP_STATUS,
+            "mcap_note": "fundamentals have income/cashflow only — no marketCap. N200 membership is the proxy.",
             "vol_tier_pct": [list(t) for t in VOL_TIER_PCT],
             "blocklist": list(TICKER_BLOCKLIST),
         },

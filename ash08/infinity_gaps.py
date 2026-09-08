@@ -11,11 +11,12 @@ GAPS = [
     {"id": "G-BOOK", "section": "Collision", "item": "Book size", "report": "50L then 5 Cr", "live": "₹5 Cr visible on desk KPIs", "status": "WIRED"},
     {"id": "G-SELECT", "section": "Collision", "item": "SELECT floor", "report": "70 (AM07)", "live": "68 full buy, near-miss tagged, WATCH 55", "status": "SUPERSEDED"},
     {"id": "G-SIZE", "section": "Collision", "item": "Position size", "report": "AM07 vol-tier", "live": "½-Kelly IC 0.05 floor 67 cap 5%", "status": "WIRED"},
-    {"id": "G-MOM", "section": "Selection", "item": "Nifty 200 6m+12m vol-adj rank vs live 6m raw", "report": "AM07 nifty200_momentum + v3 winner", "live": "Factors tab. Scanner still 6m raw. M1 TAKE not shipped.", "status": "WIRED_THIS_PASS"},
+    {"id": "G-MOM", "section": "Selection", "item": "Nifty 200 6m+12m vol-adj rank vs live 6m raw", "report": "AM07 nifty200_momentum + v3 winner", "live": "Today's Advice ranks on M1 6m+12m vol-adj. Factor lab 2024-07-05 panel stays in Lab.", "status": "WIRED_THIS_PASS"},
+    {"id": "G-T6", "section": "Selection", "item": "Official NSE delivery %", "report": "T6 delivery ≥ 20d avg", "live": "Bhav 08-Jun-2026 DELIV_PER on all 191 names. 20-session series still missing — 1-day official snapshot, not a fake 20d avg.", "status": "PROXY"},
     {"id": "G-VIX", "section": "Held", "item": "India VIX regime thresholds", "report": "User: VIX is for exit/size, not selection", "live": "Not a SELECT input. Hold on VIX & 22k", "status": "HELD"},
     {"id": "G-UPSTOX", "section": "Execution", "item": "Live LTP from Upstox", "report": "Wired; user later saw zeros", "live": "No fake REF fill. Missing quote = no buy, P&L 0 until live LTP", "status": "MISSING"},
     {"id": "G-KITE", "section": "Execution", "item": "Zerodha Kite Connect live", "report": "Priority 1 capability gap", "live": "Paper only", "status": "MISSING"},
-    {"id": "G-FII-FEED", "section": "Held", "item": "FII cash stress feed", "report": "Needed for L2/L3/L4 split in the Excel lock", "live": "Parked until owner starts FII review", "status": "HELD"},
+    {"id": "G-FII-FEED", "section": "Held", "item": "FII cash stress feed", "report": "Needed for L2/L3/L4 split in the Excel lock", "live": "FII net (to 2026-08-07) throttles Kelly size, not SELECT. Governor L2–L4 flags still not fed.", "status": "PROXY"},
 ]
 
 
