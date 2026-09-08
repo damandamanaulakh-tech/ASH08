@@ -48,6 +48,9 @@ CORR_MIN_OVERLAP = 20
 HISTORY_TTL_HOURS = 20
 METRICS_REFRESH_BATCH = 40
 
+# G4 — documented Upstox index keys (see ash08/indices.py)
+INDEX_POLICY_ID = "ash08-indices-g4-v1"
+
 GOVERNOR_EXPOSURE = {
     "L0": 100.0,
     "L1": 70.0,
@@ -98,6 +101,11 @@ def public_config() -> dict:
             "quality": "coverage of 126 sessions; UNKNOWN if < 60 bars",
             "ltp": "upstox_only",
             "missing": "UNKNOWN",
+        },
+        "indices": {
+            "policy_id": INDEX_POLICY_ID,
+            "source": "upstox_only",
+            "on_error": "failed",
         },
         "trade_plan": {
             "stop_pct": STOP_PCT,

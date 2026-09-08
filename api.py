@@ -300,7 +300,7 @@ class Handler(BaseHTTPRequestHandler):
                 "trade_plan": public_config()["trade_plan"],
                 "contract": public_config(),
                 "universe": (_mgr().status() if _mgr() else {}),
-                "note": "G2 metrics: measured or UNKNOWN. No synthetic mom. LTP Upstox only.",
+                "note": "G4 index tiles: Upstox quote or failed. Never a silent dash.",
             })
         if path == "/api/universe/core":
             core = ensure_core(force=False)
@@ -317,6 +317,16 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/metrics/refresh":
             force = (qs.get("force") or ["0"])[0] in ("1", "true", "yes")
             return self.json(200, refresh_metrics(force=force))
+        if path in ("/api/indices", "/api/index"):
+            from ash08.indices import fetch_index_tiles
+            ux = upstox_status()
+            if "fetch_quotes" not in MODS:
+                payload = fetch_index_tiles(lambda _keys: (_ for _ in ()).throw(RuntimeError("upstox module missing")), False)
+                payload["detail"] = "upstox module missing"
+                return self.json(200, payload)
+            payload = fetch_index_tiles(MODS["fetch_quotes"], bool(ux.get("token_set")))
+            payload["upstox"] = ux
+            return self.json(200, payload)
         if path == "/api/piano" or path.startswith("/api/piano/"):
             from ash08.piano import piano_from_scan, piano_summary
             scan = {}

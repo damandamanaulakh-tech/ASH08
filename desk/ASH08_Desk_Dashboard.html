@@ -84,10 +84,10 @@ table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:9px 10px;
 <main>
 <section class="view active" id="view-home">
 <div class="idx-row">
-<div class="idx"><div class="lab">NIFTY 50</div><div class="val">—</div></div>
-<div class="idx"><div class="lab">SENSEX</div><div class="val">—</div></div>
-<div class="idx"><div class="lab">BANK NIFTY</div><div class="val">—</div></div>
-<div class="idx"><div class="lab">INDIA VIX</div><div class="val">—</div></div>
+<div class="idx" data-idx="NIFTY50"><div class="lab">NIFTY 50</div><div class="val" id="idx-NIFTY50">failed</div><div class="muted" id="idx-NIFTY50-chg"></div></div>
+<div class="idx" data-idx="SENSEX"><div class="lab">SENSEX</div><div class="val" id="idx-SENSEX">failed</div><div class="muted" id="idx-SENSEX-chg"></div></div>
+<div class="idx" data-idx="BANKNIFTY"><div class="lab">BANK NIFTY</div><div class="val" id="idx-BANKNIFTY">failed</div><div class="muted" id="idx-BANKNIFTY-chg"></div></div>
+<div class="idx" data-idx="INDIAVIX"><div class="lab">INDIA VIX</div><div class="val" id="idx-INDIAVIX">failed</div><div class="muted" id="idx-INDIAVIX-chg"></div></div>
 <div class="idx"><div class="lab">Open / Unrealized</div><div class="val" id="kpi-open">0</div><div class="muted" id="kpi-upnl">P&L —</div></div>
 </div>
 <div class="grid3">
@@ -225,7 +225,7 @@ table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:9px 10px;
 </main></div>
 <div class="footer-bar"><span>ASH08</span><span id="ft-core">Core —</span><span id="ft-open">Open 0</span><span>Open ≠ Order history</span></div>
 <script>
-function showView(id){document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));const v=document.getElementById('view-'+id);if(v)v.classList.add('active');const b=document.querySelector('nav button[data-view="'+id+'"]');if(b)b.classList.add('active');if(id==='positions'||id==='home')loadBook();if(id==='watchlist')loadWatch();if(id==='piano'){loadPianoSummary();selectNote(document.querySelector('.note.active')||document.querySelector('.note'), (document.querySelector('.note.active')||document.querySelector('.note')).dataset.param);}}
+function showView(id){document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));const v=document.getElementById('view-'+id);if(v)v.classList.add('active');const b=document.querySelector('nav button[data-view="'+id+'"]');if(b)b.classList.add('active');if(id==='positions'||id==='home'){loadBook();loadIndices();}if(id==='watchlist')loadWatch();if(id==='piano'){loadPianoSummary();selectNote(document.querySelector('.note.active')||document.querySelector('.note'), (document.querySelector('.note.active')||document.querySelector('.note')).dataset.param);}}
 document.querySelectorAll('nav button').forEach(btn=>btn.addEventListener('click',()=>showView(btn.dataset.view)));
 function fillPianoList(el, rows, emptyScan){
   if(!rows||!rows.length){el.innerHTML='<div class="muted">'+(emptyScan?'Empty scan':'None')+'</div>';return;}
@@ -251,6 +251,33 @@ async function selectNote(el,id){
       document.getElementById('noteBody').textContent=(d.definition||'')+' · '+d.note+(g.level?(' · '+g.level+' '+g.exposure_pct+'%'):'');
     }
   }catch(e){}
+}
+async function loadIndices(){
+  try{
+    const r=await fetch('/api/indices');
+    const d=await r.json();
+    (d.tiles||[]).forEach(t=>{
+      const el=document.getElementById('idx-'+t.id);
+      const ch=document.getElementById('idx-'+t.id+'-chg');
+      if(!el)return;
+      if(t.status==='ok' && t.ltp!=null){
+        el.textContent=Number(t.ltp).toLocaleString('en-IN',{maximumFractionDigits:2});
+        el.className='val'+(t.change>0?' up':t.change<0?' dn':'');
+        if(ch) ch.textContent=(t.change==null)?'':((t.change>=0?'+':'')+Number(t.change).toFixed(2));
+      }else{
+        el.textContent='failed';
+        el.className='val';
+        if(ch) ch.textContent=t.detail||'Upstox failed';
+      }
+    });
+  }catch(e){
+    ['NIFTY50','SENSEX','BANKNIFTY','INDIAVIX'].forEach(id=>{
+      const el=document.getElementById('idx-'+id);
+      if(el)el.textContent='failed';
+      const ch=document.getElementById('idx-'+id+'-chg');
+      if(ch)ch.textContent='request failed';
+    });
+  }
 }
 async function loadPianoSummary(){
   try{
@@ -300,7 +327,7 @@ if(!closed.length)closedBody.innerHTML='<tr><td colspan="5" class="muted" style=
 else closedBody.innerHTML=closed.slice().reverse().slice(0,20).map(p=>{const pnl=p.pnl_label||(p.pnl!=null?((p.pnl>=0?'+':'')+p.pnl):'—');return '<tr><td><strong>'+p.symbol+'</strong></td><td>'+p.entry+'</td><td>'+(p.exit_price!=null?p.exit_price:'—')+'</td><td>'+pnl+'</td><td>'+(p.exit_reason||'—')+'</td></tr>';}).join('');
 }catch(e){}}
 async function runAuto(){try{const r=await fetch('/api/paper/auto');const d=await r.json();await loadBook();alert('Auto-buy: '+((d.auto_paper&&d.auto_paper.bought)||0)+' new (skips already open)');}catch(e){alert(e);}}
-async function boot(){try{const r=await fetch('/api/health');const d=await r.json();if(d.paper_open!=null){document.getElementById('kpi-open').textContent=d.paper_open;document.getElementById('ft-open').textContent='Open '+d.paper_open;}const ux=d.upstox||{};document.getElementById('upx-pill').textContent=ux.connected?'Upstox OK':(ux.token_set||d.upstox_token_set)?'Upstox token':'Upstox off';}catch(e){}try{const u=await fetch('/api/universe/core');const ud=await u.json();if(ud.count){document.getElementById('kpi-core').textContent=ud.count;document.getElementById('uni-core').textContent=ud.count;document.getElementById('ft-core').textContent='Core '+ud.count;}}catch(e){}await loadScan();await loadBook();await loadPianoSummary();}
+async function boot(){try{const r=await fetch('/api/health');const d=await r.json();if(d.paper_open!=null){document.getElementById('kpi-open').textContent=d.paper_open;document.getElementById('ft-open').textContent='Open '+d.paper_open;}const ux=d.upstox||{};document.getElementById('upx-pill').textContent=ux.connected?'Upstox OK':(ux.token_set||d.upstox_token_set)?'Upstox token':'Upstox off';}catch(e){}try{const u=await fetch('/api/universe/core');const ud=await u.json();if(ud.count){document.getElementById('kpi-core').textContent=ud.count;document.getElementById('uni-core').textContent=ud.count;document.getElementById('ft-core').textContent='Core '+ud.count;}}catch(e){}await loadIndices();await loadScan();await loadBook();await loadPianoSummary();}
 boot();
 </script>
 </body>
