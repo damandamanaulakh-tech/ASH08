@@ -317,6 +317,23 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/metrics/refresh":
             force = (qs.get("force") or ["0"])[0] in ("1", "true", "yes")
             return self.json(200, refresh_metrics(force=force))
+        if path == "/api/piano" or path.startswith("/api/piano/"):
+            from ash08.piano import piano_from_scan, piano_summary
+            scan = {}
+            if "store" in MODS:
+                try:
+                    scan = MODS["store"]().load_scan() or {}
+                except Exception:
+                    scan = {}
+            gov = None
+            eng = get_engine()
+            if eng and hasattr(eng, "governor") and hasattr(eng.governor, "to_dict"):
+                gov = eng.governor.to_dict()
+            extra = path[len("/api/piano/"):] if path.startswith("/api/piano/") else ""
+            param = extra or (qs.get("param") or [""])[0]
+            if not param:
+                return self.json(200, piano_summary(scan))
+            return self.json(200, piano_from_scan(scan, param, governor=gov))
         if path == "/api/scan/latest":
             if "store" not in MODS:
                 return self.json(500, {"ok": False, "error": "store missing"})

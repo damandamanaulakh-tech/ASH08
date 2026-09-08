@@ -39,6 +39,9 @@ table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:9px 10px;
 .piano{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:12px}
 .note{background:#0b1220;border:1px solid var(--line);border-radius:12px;padding:12px;cursor:pointer;min-height:70px}.note:hover,.note.active{border-color:var(--accent);background:#172554}
 .note strong{display:block;margin-bottom:4px}.note em{color:var(--muted);font-style:normal;font-size:11px}
+.note .cnt{display:block;margin-top:6px;font-size:10px;color:var(--muted)}
+.pcnts{display:flex;gap:16px;margin:8px 0 12px;font-size:12px}
+.plist{max-height:280px;overflow:auto}.plist .r{display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)}
 .horizons{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
 .hz{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}.hz strong{display:block;margin-bottom:4px}.hz span{color:var(--muted);font-size:11px}
 .exp{height:10px;border-radius:99px;background:#1f2937;overflow:hidden;margin-top:8px}.exp>i{display:block;height:100%;background:linear-gradient(90deg,#22c55e,#eab308,#ef4444)}
@@ -112,18 +115,27 @@ table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:9px 10px;
 <tbody id="scan-body"><tr><td colspan="6" class="muted" style="text-align:center;padding:20px">Loading…</td></tr></tbody></table></div>
 </section>
 <section class="view" id="view-piano">
-<div class="panel"><div class="panel-h"><h3>Parameter Piano</h3></div>
+<div class="panel"><div class="panel-h"><h3>Parameter Piano</h3><span class="muted" id="piano-asof">last scan</span></div>
 <div class="piano">
-<div class="note active" onclick="selectNote(this,'adv')"><strong>P-ADV20</strong><em>≥ 2L</em></div>
-<div class="note" onclick="selectNote(this,'turn')"><strong>P-TURNOVER</strong><em>≥ ₹5 Cr</em></div>
-<div class="note" onclick="selectNote(this,'stale')"><strong>P-STALE</strong><em>≤ 7d</em></div>
-<div class="note" onclick="selectNote(this,'mom')"><strong>P-MOM</strong><em>6M > 0</em></div>
-<div class="note" onclick="selectNote(this,'score')"><strong>P-SCORE</strong><em>0.65/0.35</em></div>
-<div class="note" onclick="selectNote(this,'corr')"><strong>P-CORR</strong><em>≤ 0.70</em></div>
-<div class="note" onclick="selectNote(this,'select')"><strong>P-SELECT</strong><em>≥ 70 auto-buy</em></div>
-<div class="note" onclick="selectNote(this,'gov')"><strong>P-GOV</strong><em>L0–L4</em></div>
+<div class="note active" data-param="P-ADV20" onclick="selectNote(this,'P-ADV20')"><strong>P-ADV20</strong><em>≥ 2L</em><span class="cnt" data-cnt="P-ADV20"></span></div>
+<div class="note" data-param="P-TURNOVER" onclick="selectNote(this,'P-TURNOVER')"><strong>P-TURNOVER</strong><em>≥ ₹5 Cr</em><span class="cnt" data-cnt="P-TURNOVER"></span></div>
+<div class="note" data-param="P-STALE" onclick="selectNote(this,'P-STALE')"><strong>P-STALE</strong><em>≤ 7d</em><span class="cnt" data-cnt="P-STALE"></span></div>
+<div class="note" data-param="P-MOM" onclick="selectNote(this,'P-MOM')"><strong>P-MOM</strong><em>6M > 0</em><span class="cnt" data-cnt="P-MOM"></span></div>
+<div class="note" data-param="P-SCORE" onclick="selectNote(this,'P-SCORE')"><strong>P-SCORE</strong><em>0.65/0.35</em><span class="cnt" data-cnt="P-SCORE"></span></div>
+<div class="note" data-param="P-CORR" onclick="selectNote(this,'P-CORR')"><strong>P-CORR</strong><em>≤ 0.70</em><span class="cnt" data-cnt="P-CORR"></span></div>
+<div class="note" data-param="P-SELECT" onclick="selectNote(this,'P-SELECT')"><strong>P-SELECT</strong><em>≥ 70 auto-buy</em><span class="cnt" data-cnt="P-SELECT"></span></div>
+<div class="note" data-param="P-GOV" onclick="selectNote(this,'P-GOV')"><strong>P-GOV</strong><em>L0–L4</em><span class="cnt" data-cnt="P-GOV"></span></div>
 </div></div>
-<div class="card"><h4 id="noteTitle">P-ADV20</h4><p class="muted" id="noteBody">ADV20 ≥ 200,000</p></div>
+<div class="card">
+<h4 id="noteTitle">P-ADV20</h4>
+<p class="muted" id="noteBody">ADV20 ≥ 200,000</p>
+<div class="pcnts"><span>PASS <strong id="p-n-pass">0</strong></span><span>FAIL <strong id="p-n-fail">0</strong></span><span>UNKNOWN <strong id="p-n-unk">0</strong></span></div>
+<div class="grid3">
+<div><h4>Passed</h4><div class="plist" id="p-pass"><div class="muted">Empty scan</div></div></div>
+<div><h4>Failed</h4><div class="plist" id="p-fail"><div class="muted">Empty scan</div></div></div>
+<div><h4>UNKNOWN</h4><div class="plist" id="p-unk"><div class="muted">Empty scan</div></div></div>
+</div>
+</div>
 </section>
 <section class="view" id="view-detail">
 <div class="grid2">
@@ -213,10 +225,45 @@ table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:9px 10px;
 </main></div>
 <div class="footer-bar"><span>ASH08</span><span id="ft-core">Core —</span><span id="ft-open">Open 0</span><span>Open ≠ Order history</span></div>
 <script>
-function showView(id){document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));const v=document.getElementById('view-'+id);if(v)v.classList.add('active');const b=document.querySelector('nav button[data-view="'+id+'"]');if(b)b.classList.add('active');if(id==='positions'||id==='home')loadBook();if(id==='watchlist')loadWatch();}
+function showView(id){document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));const v=document.getElementById('view-'+id);if(v)v.classList.add('active');const b=document.querySelector('nav button[data-view="'+id+'"]');if(b)b.classList.add('active');if(id==='positions'||id==='home')loadBook();if(id==='watchlist')loadWatch();if(id==='piano'){loadPianoSummary();selectNote(document.querySelector('.note.active')||document.querySelector('.note'), (document.querySelector('.note.active')||document.querySelector('.note')).dataset.param);}}
 document.querySelectorAll('nav button').forEach(btn=>btn.addEventListener('click',()=>showView(btn.dataset.view)));
-const NOTE={adv:{t:'P-ADV20',b:'ADV20 ≥ 200,000'},turn:{t:'P-TURNOVER',b:'5D ≥ ₹5 Cr'},stale:{t:'P-STALE',b:'≤ 7 days'},mom:{t:'P-MOM',b:'6M > 0'},score:{t:'P-SCORE',b:'0.65×mom+0.35×qual'},corr:{t:'P-CORR',b:'≤ 0.70 vs book'},select:{t:'P-SELECT',b:'≥ 70 → auto paper buy'},gov:{t:'P-GOV',b:'L0–L4 100/70/50/25/15'}};
-function selectNote(el,id){document.querySelectorAll('.note').forEach(n=>n.classList.remove('active'));el.classList.add('active');document.getElementById('noteTitle').textContent=NOTE[id].t;document.getElementById('noteBody').textContent=NOTE[id].b;}
+function fillPianoList(el, rows, emptyScan){
+  if(!rows||!rows.length){el.innerHTML='<div class="muted">'+(emptyScan?'Empty scan':'None')+'</div>';return;}
+  el.innerHTML=rows.map(r=>'<div class="r"><strong>'+r.symbol+'</strong><span class="muted">'+(r.detail||r.decision||'')+'</span></div>').join('');
+}
+async function selectNote(el,id){
+  if(el){document.querySelectorAll('.note').forEach(n=>n.classList.remove('active'));el.classList.add('active');}
+  try{
+    const r=await fetch('/api/piano?param='+encodeURIComponent(id||'P-ADV20'));
+    const d=await r.json();
+    document.getElementById('noteTitle').textContent=d.param_id||id;
+    document.getElementById('noteBody').textContent=d.definition||d.note||'';
+    const c=d.counts||{};
+    document.getElementById('p-n-pass').textContent=c.passed||0;
+    document.getElementById('p-n-fail').textContent=c.failed||0;
+    document.getElementById('p-n-unk').textContent=c.unknown||0;
+    if(d.asof)document.getElementById('piano-asof').textContent=d.asof;
+    fillPianoList(document.getElementById('p-pass'), d.passed, d.empty_scan);
+    fillPianoList(document.getElementById('p-fail'), d.failed, d.empty_scan);
+    fillPianoList(document.getElementById('p-unk'), d.unknown, d.empty_scan);
+    if(d.note && d.param_id==='P-GOV'){
+      const g=d.governor||{};
+      document.getElementById('noteBody').textContent=(d.definition||'')+' · '+d.note+(g.level?(' · '+g.level+' '+g.exposure_pct+'%'):'');
+    }
+  }catch(e){}
+}
+async function loadPianoSummary(){
+  try{
+    const r=await fetch('/api/piano');
+    const d=await r.json();
+    const gates=d.gates||{};
+    document.querySelectorAll('[data-cnt]').forEach(el=>{
+      const c=gates[el.getAttribute('data-cnt')]||{};
+      el.textContent=(c.passed||0)+' / '+(c.failed||0)+' / '+(c.unknown||0);
+    });
+    if(d.asof)document.getElementById('piano-asof').textContent=d.asof;
+  }catch(e){}
+}
 function renderRows(rows,sc){const body=document.getElementById('scan-body');document.getElementById('kpi-passed').textContent=sc!=null?sc:'—';const picks=document.getElementById('home-picks');
 if(!rows||!rows.length){body.innerHTML='<tr><td colspan="6" class="muted" style="text-align:center;padding:20px">Empty — Seed</td></tr>';picks.innerHTML='<tr><td colspan="3" class="muted" style="text-align:center;padding:16px">No picks</td></tr>';return;}
 body.innerHTML=rows.slice(0,50).map((row,i)=>{const d=(row.decision||'').toUpperCase();const cls=d==='SELECT'?'select':d==='WATCH'?'watch':d==='UNKNOWN'?'unknown':'reject';return '<tr><td class="muted">'+(i+1)+'</td><td><strong>'+row.symbol+'</strong></td><td><span class="tag '+cls+'">'+d+'</span></td><td>'+(row.score!=null?row.score:'')+'</td><td class="muted">'+(row.reason||'')+'</td><td><button class="btn" style="padding:4px 8px" onclick=\'openDetail('+JSON.stringify(row)+')\'>View</button></td></tr>';}).join('');
@@ -226,9 +273,9 @@ else picks.innerHTML=selects.map(r=>'<tr><td><strong>'+r.symbol+'</strong></td><
 function ticket(sym){document.getElementById('tk-sym').value=sym;showView('ticket');}
 async function loadScan(){try{const r=await fetch('/api/scan/latest');const d=await r.json();renderRows(d.rows||[],d.select_count);}catch(e){}}
 async function loadWatch(){try{const r=await fetch('/api/scan/latest');const d=await r.json();const rows=(d.rows||[]).filter(x=>{const z=(x.decision||'').toUpperCase();return z==='SELECT'||z==='WATCH';}).slice(0,30);const body=document.getElementById('watch-body');if(!rows.length)body.innerHTML='<tr><td colspan="4" class="muted" style="text-align:center;padding:18px">Empty</td></tr>';else body.innerHTML=rows.map(row=>{const d=(row.decision||'').toUpperCase();const cls=d==='SELECT'?'select':'watch';return '<tr><td><strong>'+row.symbol+'</strong></td><td><span class="tag '+cls+'">'+d+'</span></td><td>'+row.score+'</td><td class="muted">'+(row.reason||'')+'</td></tr>';}).join('');}catch(e){}}
-async function runDemo(){try{const r=await fetch('/api/demo/run');const d=await r.json();if(d.ok){document.getElementById('kpi-core').textContent=d.core_count||'—';document.getElementById('uni-core').textContent=d.core_count||'—';document.getElementById('ft-core').textContent='Core '+(d.core_count||'—');await loadScan();await loadBook();}}catch(e){}}
-async function runScan(){try{const r=await fetch('/api/scan/run');const d=await r.json();if(d.ok){await loadScan();await loadBook();}else await runDemo();}catch(e){await runDemo();}}
-function openDetail(row){document.getElementById('det-sym').textContent=row.symbol||'';document.getElementById('det-dec').textContent=row.decision||'—';document.getElementById('det-score').textContent=row.score!=null?row.score:'—';document.getElementById('det-reason').textContent=row.reason||'';document.getElementById('det-hits').innerHTML=(row.hits||[]).map(h=>'<div class="row"><span>'+h.param_id+'</span><span class="tag '+(h.passed?'select':'reject')+'">'+(h.passed?'PASS':'FAIL')+'</span></div>').join('')||'—';document.getElementById('tk-sym').value=row.symbol||'';if(row.ltp)document.getElementById('tk-price').value=row.ltp;showView('detail');}
+async function runDemo(){try{const r=await fetch('/api/demo/run');const d=await r.json();if(d.ok){document.getElementById('kpi-core').textContent=d.core_count||'—';document.getElementById('uni-core').textContent=d.core_count||'—';document.getElementById('ft-core').textContent='Core '+(d.core_count||'—');await loadScan();await loadBook();await loadPianoSummary();}}catch(e){}}
+async function runScan(){try{const r=await fetch('/api/scan/run');const d=await r.json();if(d.ok){await loadScan();await loadBook();await loadPianoSummary();}else await runDemo();}catch(e){await runDemo();}}
+function openDetail(row){document.getElementById('det-sym').textContent=row.symbol||'';document.getElementById('det-dec').textContent=row.decision||'—';document.getElementById('det-score').textContent=row.score!=null?row.score:'—';document.getElementById('det-reason').textContent=row.reason||'';document.getElementById('det-hits').innerHTML=(row.hits||[]).map(h=>{const st=(h.status||(h.passed?'PASS':'FAIL')).toUpperCase();const cls=st==='PASS'?'select':st==='UNKNOWN'?'unknown':'reject';return '<div class="row"><span>'+h.param_id+'</span><span class="tag '+cls+'">'+st+'</span></div>';}).join('')||'—';document.getElementById('tk-sym').value=row.symbol||'';if(row.ltp)document.getElementById('tk-price').value=row.ltp;showView('detail');}
 async function paperBuy(){const msg=document.getElementById('buy-msg'),btn=document.getElementById('btn-buy');const symbol=(document.getElementById('tk-sym').value||'').trim().toUpperCase();const qty=document.getElementById('tk-qty').value||'50';const price=document.getElementById('tk-price').value||'';const stop=document.getElementById('tk-stop').value||'';const target=document.getElementById('tk-target').value||'';if(!symbol){msg.textContent='Enter symbol';msg.style.color='#fca5a5';return;}btn.disabled=true;msg.textContent='Placing…';try{const r=await fetch('/api/paper/buy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol,qty,price,stop,target})});const d=await r.json();if(d.ok){msg.textContent=d.message||'Filled';msg.style.color='#86efac';await loadBook();showView('positions');}else{msg.textContent=d.error||'Failed';msg.style.color='#fca5a5';}}catch(e){msg.textContent=String(e);msg.style.color='#fca5a5';}btn.disabled=false;}
 async function loadBook(){try{const r=await fetch('/api/paper/book');const d=await r.json();if(!d.ok)return;const oc=d.open_count!=null?d.open_count:0;['kpi-open','kpi-open2','plan-open'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=oc;});document.getElementById('ft-open').textContent='Open '+oc;
 const up=d.unrealized_pnl!=null?((d.unrealized_pnl>=0?'+':'')+d.unrealized_pnl):'—';
@@ -253,7 +300,7 @@ if(!closed.length)closedBody.innerHTML='<tr><td colspan="5" class="muted" style=
 else closedBody.innerHTML=closed.slice().reverse().slice(0,20).map(p=>{const pnl=p.pnl_label||(p.pnl!=null?((p.pnl>=0?'+':'')+p.pnl):'—');return '<tr><td><strong>'+p.symbol+'</strong></td><td>'+p.entry+'</td><td>'+(p.exit_price!=null?p.exit_price:'—')+'</td><td>'+pnl+'</td><td>'+(p.exit_reason||'—')+'</td></tr>';}).join('');
 }catch(e){}}
 async function runAuto(){try{const r=await fetch('/api/paper/auto');const d=await r.json();await loadBook();alert('Auto-buy: '+((d.auto_paper&&d.auto_paper.bought)||0)+' new (skips already open)');}catch(e){alert(e);}}
-async function boot(){try{const r=await fetch('/api/health');const d=await r.json();if(d.paper_open!=null){document.getElementById('kpi-open').textContent=d.paper_open;document.getElementById('ft-open').textContent='Open '+d.paper_open;}const ux=d.upstox||{};document.getElementById('upx-pill').textContent=ux.connected?'Upstox OK':(ux.token_set||d.upstox_token_set)?'Upstox token':'Upstox off';}catch(e){}try{const u=await fetch('/api/universe/core');const ud=await u.json();if(ud.count){document.getElementById('kpi-core').textContent=ud.count;document.getElementById('uni-core').textContent=ud.count;document.getElementById('ft-core').textContent='Core '+ud.count;}}catch(e){}await loadScan();await loadBook();}
+async function boot(){try{const r=await fetch('/api/health');const d=await r.json();if(d.paper_open!=null){document.getElementById('kpi-open').textContent=d.paper_open;document.getElementById('ft-open').textContent='Open '+d.paper_open;}const ux=d.upstox||{};document.getElementById('upx-pill').textContent=ux.connected?'Upstox OK':(ux.token_set||d.upstox_token_set)?'Upstox token':'Upstox off';}catch(e){}try{const u=await fetch('/api/universe/core');const ud=await u.json();if(ud.count){document.getElementById('kpi-core').textContent=ud.count;document.getElementById('uni-core').textContent=ud.count;document.getElementById('ft-core').textContent='Core '+ud.count;}}catch(e){}await loadScan();await loadBook();await loadPianoSummary();}
 boot();
 </script>
 </body>

@@ -42,6 +42,7 @@ class ParamHit:
     param_id: str
     passed: bool
     detail: str
+    status: str = "FAIL"  # PASS | FAIL | UNKNOWN
 
 
 @dataclass
@@ -91,56 +92,68 @@ def compute_final_score(mom_6m, quality_score):
 
 
 MANDATORY = ("adv20", "turnover_cr_5d", "stale_days", "mom_6m", "quality_score")
+SCAN_GATES = ("P-ADV20", "P-TURNOVER", "P-STALE", "P-MOM", "P-CORR", "P-SCORE", "P-SELECT")
 
 
 def evaluate_stock(m: StockMetrics) -> ScanRow:
     hits: List[ParamHit] = []
-    missing = [name for name in MANDATORY if getattr(m, name, None) is None]
-    present = len(MANDATORY) - len(missing)
-    coverage = round(present / len(MANDATORY), 2)
 
-    def _gate(ok: bool, pid: str, detail: str) -> bool:
-        hits.append(ParamHit(pid, ok, detail))
+    def add(pid: str, status: str, detail: str) -> None:
+        hits.append(ParamHit(pid, status == "PASS", detail, status))
+
+    def field(pid: str, value, ok: bool, detail: str) -> Optional[bool]:
+        if value is None:
+            add(pid, "UNKNOWN", "UNKNOWN missing evidence")
+            return None
+        add(pid, "PASS" if ok else "FAIL", detail)
         return ok
 
-    if missing:
-        score = compute_final_score(m.mom_6m, m.quality_score) if m.mom_6m is not None and m.quality_score is not None else 0.0
-        for name in missing:
-            hits.append(ParamHit(f"P-{name.upper()}", False, "UNKNOWN missing evidence"))
-        hits.append(ParamHit("P-SCORE", False, f"score={score}"))
-        return ScanRow(
-            symbol=m.symbol,
-            decision="UNKNOWN",
-            score=score,
-            segment=m.segment,
-            ltp=m.ltp,
-            reason="missing " + ",".join(missing),
-            hits=hits,
-            hard_pass=False,
-            coverage=coverage,
-        )
-
-    adv_ok = _gate(m.adv20 >= ADV20_MIN, "P-ADV20", f"adv20={m.adv20}")
-    t_ok = _gate(m.turnover_cr_5d >= TURNOVER_CR_MIN, "P-TURNOVER", f"to={m.turnover_cr_5d}")
-    s_ok = _gate(m.stale_days <= STALE_MAX_DAYS, "P-STALE", f"stale={m.stale_days}")
-    mom_ok = _gate(m.mom_6m > MOM_MIN, "P-MOM", f"mom={m.mom_6m}")
+    adv_ok = field("P-ADV20", m.adv20, (m.adv20 or 0) >= ADV20_MIN, f"adv20={m.adv20}")
+    t_ok = field("P-TURNOVER", m.turnover_cr_5d, (m.turnover_cr_5d or 0) >= TURNOVER_CR_MIN, f"to={m.turnover_cr_5d}")
+    s_ok = field("P-STALE", m.stale_days, (m.stale_days or 0) <= STALE_MAX_DAYS, f"stale={m.stale_days}")
+    mom_ok = field("P-MOM", m.mom_6m, (m.mom_6m or 0) > MOM_MIN, f"mom={m.mom_6m}")
     if m.max_corr_vs_book is None:
-        c_ok = _gate(False, "P-CORR", "UNKNOWN corr vs book")
-        missing_corr = True
+        add("P-CORR", "UNKNOWN", "UNKNOWN corr vs book")
+        c_ok = None
     else:
-        c_ok = _gate(m.max_corr_vs_book <= CORR_MAX, "P-CORR", f"corr={m.max_corr_vs_book} max={CORR_MAX}")
-        missing_corr = False
-    hard = adv_ok and t_ok and s_ok and mom_ok and c_ok and not missing_corr
-    score = compute_final_score(m.mom_6m, m.quality_score)
-    hits.append(ParamHit("P-SCORE", True, f"score={score}"))
-    if missing_corr:
-        decision, reason = "UNKNOWN", "missing corr vs book"
+        c_ok = m.max_corr_vs_book <= CORR_MAX
+        add("P-CORR", "PASS" if c_ok else "FAIL", f"corr={m.max_corr_vs_book} max={CORR_MAX}")
+
+    unknown_fields = [k for k, v in [
+        ("adv20", adv_ok), ("turnover_cr_5d", t_ok), ("stale_days", s_ok),
+        ("mom_6m", mom_ok), ("corr", c_ok),
+    ] if v is None]
+    # quality is mandatory for score, not its own piano key
+    if m.quality_score is None:
+        unknown_fields.append("quality_score")
+
+    score_ready = m.mom_6m is not None and m.quality_score is not None
+    score = compute_final_score(m.mom_6m, m.quality_score) if score_ready else 0.0
+    if score_ready:
+        add("P-SCORE", "PASS", f"score={score}")
+    else:
+        add("P-SCORE", "UNKNOWN", "UNKNOWN score (mom or quality missing)")
+
+    hard = all(v is True for v in (adv_ok, t_ok, s_ok, mom_ok, c_ok))
+    coverage = round(sum(1 for v in (adv_ok, t_ok, s_ok, mom_ok, c_ok) if v is not None) / 5.0, 2)
+
+    if unknown_fields:
+        decision, reason = "UNKNOWN", "missing " + ",".join(unknown_fields)
+        hard = False
     elif hard and score >= SCORE_SELECT:
         decision, reason = "SELECT", f"score {score} >= {SCORE_SELECT}"
     elif hard and score >= SCORE_WATCH:
         decision, reason = "WATCH", f"score {score} in watch band"
     else:
         decision, reason = "REJECT", "hard fail or low score"
+
+    if decision == "SELECT":
+        add("P-SELECT", "PASS", reason)
+    elif decision == "UNKNOWN":
+        add("P-SELECT", "UNKNOWN", reason)
+    else:
+        add("P-SELECT", "FAIL", reason)
+
     return ScanRow(
         symbol=m.symbol,
         decision=decision,
@@ -150,7 +163,7 @@ def evaluate_stock(m: StockMetrics) -> ScanRow:
         reason=reason,
         hits=hits,
         hard_pass=hard,
-        coverage=1.0 if not missing_corr else 0.83,
+        coverage=coverage,
     )
 
 
