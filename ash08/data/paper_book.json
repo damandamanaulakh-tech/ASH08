@@ -1,0 +1,348 @@
+{
+  "saved_at": "2026-09-09T11:04:49Z",
+  "governor": {
+    "level": "L0_NORMAL",
+    "exposure_pct": 100.0,
+    "rationale": "init"
+  },
+  "orders": [
+    {
+      "order_id": "ord_68d82bf119",
+      "symbol": "BHARATFORG",
+      "side": "BUY",
+      "qty": 1262,
+      "sized_qty": 1262,
+      "fill_price": 1979.6,
+      "stop": 1920.21,
+      "target": 2098.38,
+      "hold_days": 15,
+      "source": "auto_select",
+      "score": 100.0,
+      "status": "FILLED",
+      "governor": {
+        "level": "L0_NORMAL",
+        "exposure_pct": 100.0,
+        "rationale": "init"
+      },
+      "created_at": "2026-09-09T11:04:49Z",
+      "exit_plan": {
+        "stop_pct": 3.0,
+        "target_pct": 6.0,
+        "max_hold_days": 15,
+        "exits": [
+          "STOP_HIT",
+          "TARGET_HIT",
+          "MAX_HOLD",
+          "GOVERNOR_CUT",
+          "ROTATION"
+        ]
+      }
+    },
+    {
+      "order_id": "ord_87e48e3c05",
+      "symbol": "ADANIENSOL",
+      "side": "BUY",
+      "qty": 1756,
+      "sized_qty": 1756,
+      "fill_price": 1423.3,
+      "stop": 1380.6,
+      "target": 1508.7,
+      "hold_days": 15,
+      "source": "auto_select",
+      "score": 100.0,
+      "status": "FILLED",
+      "governor": {
+        "level": "L0_NORMAL",
+        "exposure_pct": 100.0,
+        "rationale": "init"
+      },
+      "created_at": "2026-09-09T11:04:49Z",
+      "exit_plan": {
+        "stop_pct": 3.0,
+        "target_pct": 6.0,
+        "max_hold_days": 15,
+        "exits": [
+          "STOP_HIT",
+          "TARGET_HIT",
+          "MAX_HOLD",
+          "GOVERNOR_CUT",
+          "ROTATION"
+        ]
+      }
+    },
+    {
+      "order_id": "ord_0a68d7817f",
+      "symbol": "FEDERALBNK",
+      "side": "BUY",
+      "qty": 7246,
+      "sized_qty": 7246,
+      "fill_price": 345.0,
+      "stop": 334.65,
+      "target": 365.7,
+      "hold_days": 15,
+      "source": "auto_select",
+      "score": 100.0,
+      "status": "FILLED",
+      "governor": {
+        "level": "L0_NORMAL",
+        "exposure_pct": 100.0,
+        "rationale": "init"
+      },
+      "created_at": "2026-09-09T11:04:49Z",
+      "exit_plan": {
+        "stop_pct": 3.0,
+        "target_pct": 6.0,
+        "max_hold_days": 15,
+        "exits": [
+          "STOP_HIT",
+          "TARGET_HIT",
+          "MAX_HOLD",
+          "GOVERNOR_CUT",
+          "ROTATION"
+        ]
+      }
+    },
+    {
+      "order_id": "ord_db732fb4b6",
+      "symbol": "ABCAPITAL",
+      "side": "BUY",
+      "qty": 5593,
+      "sized_qty": 5593,
+      "fill_price": 400.0,
+      "stop": 388.0,
+      "target": 424.0,
+      "hold_days": 15,
+      "source": "auto_select",
+      "score": 85.02,
+      "status": "FILLED",
+      "governor": {
+        "level": "L0_NORMAL",
+        "exposure_pct": 100.0,
+        "rationale": "init"
+      },
+      "created_at": "2026-09-09T11:04:49Z",
+      "exit_plan": {
+        "stop_pct": 3.0,
+        "target_pct": 6.0,
+        "max_hold_days": 15,
+        "exits": [
+          "STOP_HIT",
+          "TARGET_HIT",
+          "MAX_HOLD",
+          "GOVERNOR_CUT",
+          "ROTATION"
+        ]
+      }
+    }
+  ],
+  "positions": [
+    {
+      "position_id": "pos_11e6dad505",
+      "symbol": "BHARATFORG",
+      "qty": 1262,
+      "entry": 1979.6,
+      "entry_value": 2498255.2,
+      "buy_cost": 2498.26,
+      "stop": 1920.21,
+      "target": 2098.38,
+      "hold_days": 15,
+      "days_held": 0,
+      "days_left": 15,
+      "status": "OPEN",
+      "opened_at": "2026-09-09T11:04:49Z",
+      "ltp": 1979.6,
+      "source": "auto_select",
+      "score": 100.0,
+      "stop_pct": 3.0,
+      "target_pct": 6.0,
+      "exit_plan": {
+        "stop_pct": 3.0,
+        "target_pct": 6.0,
+        "max_hold_days": 15,
+        "exits": [
+          "STOP_HIT",
+          "TARGET_HIT",
+          "MAX_HOLD",
+          "GOVERNOR_CUT",
+          "ROTATION"
+        ]
+      },
+      "exit_reason": null,
+      "exit_price": null,
+      "pnl": 0.0,
+      "pnl_pct": 0.0,
+      "pnl_label": "+0.00 (+0.00%)",
+      "unrealized_pnl": 0.0,
+      "unrealized_pct": 0.0,
+      "cash_restored": false,
+      "mark_value": 2498255.2
+    },
+    {
+      "position_id": "pos_a2b396e1f4",
+      "symbol": "ADANIENSOL",
+      "qty": 1756,
+      "entry": 1423.3,
+      "entry_value": 2499314.8,
+      "buy_cost": 2499.31,
+      "stop": 1380.6,
+      "target": 1508.7,
+      "hold_days": 15,
+      "days_held": 0,
+      "days_left": 15,
+      "status": "OPEN",
+      "opened_at": "2026-09-09T11:04:49Z",
+      "ltp": 1423.3,
+      "source": "auto_select",
+      "score": 100.0,
+      "stop_pct": 3.0,
+      "target_pct": 6.0,
+      "exit_plan": {
+        "stop_pct": 3.0,
+        "target_pct": 6.0,
+        "max_hold_days": 15,
+        "exits": [
+          "STOP_HIT",
+          "TARGET_HIT",
+          "MAX_HOLD",
+          "GOVERNOR_CUT",
+          "ROTATION"
+        ]
+      },
+      "exit_reason": null,
+      "exit_price": null,
+      "pnl": 0.0,
+      "pnl_pct": 0.0,
+      "pnl_label": "+0.00 (+0.00%)",
+      "unrealized_pnl": 0.0,
+      "unrealized_pct": 0.0,
+      "cash_restored": false,
+      "mark_value": 2499314.8
+    },
+    {
+      "position_id": "pos_b90dd0cb8f",
+      "symbol": "FEDERALBNK",
+      "qty": 7246,
+      "entry": 345.0,
+      "entry_value": 2499870.0,
+      "buy_cost": 2499.87,
+      "stop": 334.65,
+      "target": 365.7,
+      "hold_days": 15,
+      "days_held": 0,
+      "days_left": 15,
+      "status": "OPEN",
+      "opened_at": "2026-09-09T11:04:49Z",
+      "ltp": 345.0,
+      "source": "auto_select",
+      "score": 100.0,
+      "stop_pct": 3.0,
+      "target_pct": 6.0,
+      "exit_plan": {
+        "stop_pct": 3.0,
+        "target_pct": 6.0,
+        "max_hold_days": 15,
+        "exits": [
+          "STOP_HIT",
+          "TARGET_HIT",
+          "MAX_HOLD",
+          "GOVERNOR_CUT",
+          "ROTATION"
+        ]
+      },
+      "exit_reason": null,
+      "exit_price": null,
+      "pnl": 0.0,
+      "pnl_pct": 0.0,
+      "pnl_label": "+0.00 (+0.00%)",
+      "unrealized_pnl": 0.0,
+      "unrealized_pct": 0.0,
+      "cash_restored": false,
+      "mark_value": 2499870.0
+    },
+    {
+      "position_id": "pos_56100ac9f6",
+      "symbol": "ABCAPITAL",
+      "qty": 5593,
+      "entry": 400.0,
+      "entry_value": 2237200.0,
+      "buy_cost": 2237.2,
+      "stop": 388.0,
+      "target": 424.0,
+      "hold_days": 15,
+      "days_held": 0,
+      "days_left": 15,
+      "status": "OPEN",
+      "opened_at": "2026-09-09T11:04:49Z",
+      "ltp": 400.0,
+      "source": "auto_select",
+      "score": 85.02,
+      "stop_pct": 3.0,
+      "target_pct": 6.0,
+      "exit_plan": {
+        "stop_pct": 3.0,
+        "target_pct": 6.0,
+        "max_hold_days": 15,
+        "exits": [
+          "STOP_HIT",
+          "TARGET_HIT",
+          "MAX_HOLD",
+          "GOVERNOR_CUT",
+          "ROTATION"
+        ]
+      },
+      "exit_reason": null,
+      "exit_price": null,
+      "pnl": 0.0,
+      "pnl_pct": 0.0,
+      "pnl_label": "+0.00 (+0.00%)",
+      "unrealized_pnl": 0.0,
+      "unrealized_pct": 0.0,
+      "cash_restored": false,
+      "mark_value": 2237200.0
+    }
+  ],
+  "journal": [
+    {
+      "ts": "2026-09-09T11:04:49Z",
+      "event": "BUY",
+      "symbol": "BHARATFORG",
+      "qty": 1262,
+      "price": 1979.6,
+      "stop": 1920.21,
+      "target": 2098.38,
+      "source": "auto_select"
+    },
+    {
+      "ts": "2026-09-09T11:04:49Z",
+      "event": "BUY",
+      "symbol": "ADANIENSOL",
+      "qty": 1756,
+      "price": 1423.3,
+      "stop": 1380.6,
+      "target": 1508.7,
+      "source": "auto_select"
+    },
+    {
+      "ts": "2026-09-09T11:04:49Z",
+      "event": "BUY",
+      "symbol": "FEDERALBNK",
+      "qty": 7246,
+      "price": 345.0,
+      "stop": 334.65,
+      "target": 365.7,
+      "source": "auto_select"
+    },
+    {
+      "ts": "2026-09-09T11:04:49Z",
+      "event": "BUY",
+      "symbol": "ABCAPITAL",
+      "qty": 5593,
+      "price": 400.0,
+      "stop": 388.0,
+      "target": 424.0,
+      "source": "auto_select"
+    }
+  ],
+  "cash": 40255625.36,
+  "book_value": 50000000.0
+}

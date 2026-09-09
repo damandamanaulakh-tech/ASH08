@@ -108,7 +108,7 @@ table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:9px 10px;
 <main>
 <section class="view active" id="view-home">
 <div class="banner">
-<div><strong>Paper robot is on.</strong> Buys today's BUY names. Sells itself on −3% stop / +6% target / 15d hold. Live last = Upstox, else Yahoo chart. Never a made-up mark.</div>
+<div><strong>Paper robot is on.</strong> Buys today's BUY names whenever a live last exists — including after hours catch-up. Sells itself on −3% / +6% / 15d. Book survives restart. Never a made-up mark.</div>
 <div class="muted">Tape as-of <b id="adv-asof">—</b> · FII as-of <b id="adv-fii-asof">—</b> · robot <b id="robot-line">waiting first tick</b></div>
 </div>
 <div class="kpis6">
@@ -126,8 +126,11 @@ table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:9px 10px;
 <table><thead><tr><th>Rank</th><th>Symbol</th><th>Score</th><th>Why</th></tr></thead>
 <tbody id="adv-watch"><tr><td colspan="4" class="muted" style="text-align:center;padding:16px">Loading…</td></tr></tbody></table></div>
 <div class="panel"><div class="panel-h"><h3>Open book</h3><button class="btn" onclick="showView('positions')">Trade book</button></div>
-<table><thead><tr><th>Symbol</th><th>LTP</th><th>P&L</th></tr></thead>
-<tbody id="home-pos"><tr><td colspan="3" class="muted" style="text-align:center;padding:16px">No opens — paper fill needs live LTP</td></tr></tbody></table>
+<table><thead><tr><th>Symbol</th><th>Qty</th><th>Entry</th><th>LTP</th><th>P&L</th></tr></thead>
+<tbody id="home-pos"><tr><td colspan="5" class="muted" style="text-align:center;padding:16px">Catch-up: robot fills when a live last is present</td></tr></tbody></table>
+<div class="panel" style="margin-top:12px"><div class="panel-h"><h3>Journal</h3><span class="muted">append-only</span></div>
+<table><thead><tr><th>When</th><th>Event</th><th>Name</th><th>Detail</th></tr></thead>
+<tbody id="home-journal"><tr><td colspan="4" class="muted" style="text-align:center;padding:16px">Waiting first fill</td></tr></tbody></table>
 <div class="card" style="border:0;border-radius:0">
 <div class="row"><span class="muted">Stop / Target / Hold</span><strong>-3% / +6% / 15d</strong></div>
 <div class="row"><span class="muted">Size</span><strong>½-Kelly · FII throttle</strong></div>
@@ -529,9 +532,17 @@ const lp=document.getElementById('ltp-pill');if(lp)lp.textContent='LTP '+(d.ltp_
 if(d.plan){if(d.plan.stop_pct!=null)document.getElementById('plan-stop').textContent='-'+d.plan.stop_pct+'%';if(d.plan.target_pct!=null)document.getElementById('plan-target').textContent='+'+d.plan.target_pct+'%';if(d.plan.max_hold_days!=null)document.getElementById('plan-hold').textContent=d.plan.max_hold_days+'d';}
 if(d.governor){const lvl=(d.governor.level||'L0').split('_')[0];document.getElementById('kpi-gov').textContent=lvl;document.getElementById('gov-level').textContent=d.governor.level||'L0';document.getElementById('gov-pill').textContent='Gov '+lvl;const exp=d.governor.exposure_pct!=null?d.governor.exposure_pct:100;document.getElementById('gov-exp').textContent=exp+'%';document.getElementById('gov-bar').style.width=exp+'%';}
 const opens=d.open||[];const posBody=document.getElementById('pos-body');const homePos=document.getElementById('home-pos');
-if(!opens.length){posBody.innerHTML='<tr><td colspan="9" class="muted" style="text-align:center;padding:18px">No open — robot buys on live last (Upstox or Yahoo)</td></tr>';homePos.innerHTML='<tr><td colspan="3" class="muted" style="text-align:center;padding:16px">No opens</td></tr>';}
+if(!opens.length){posBody.innerHTML='<tr><td colspan="9" class="muted" style="text-align:center;padding:18px">No open — catch-up fills on live last</td></tr>';homePos.innerHTML='<tr><td colspan="5" class="muted" style="text-align:center;padding:16px">No opens</td></tr>';}
 else{posBody.innerHTML=opens.map(p=>{const pnl=p.pnl_label||(p.pnl!=null?((p.pnl>=0?'+':'')+p.pnl):'—');const col=(p.pnl!=null&&p.pnl<0)?'dn':'up';return '<tr><td><strong>'+p.symbol+'</strong></td><td>'+p.qty+'</td><td>'+p.entry+'</td><td>'+(p.ltp!=null?p.ltp:'—')+'</td><td class="'+col+'">'+pnl+'</td><td>'+(p.stop!=null?p.stop:'—')+'</td><td>'+(p.target!=null?p.target:'—')+'</td><td>'+(p.days_left!=null?p.days_left+'d':'—')+'</td><td><span class="tag open">'+(p.status||'OPEN')+'</span></td></tr>';}).join('');
-homePos.innerHTML=opens.slice(0,6).map(p=>{const pnl=p.pnl!=null?((p.pnl>=0?'+':'')+p.pnl):'—';const col=(p.pnl!=null&&p.pnl<0)?'dn':'up';return '<tr><td><strong>'+p.symbol+'</strong></td><td>'+(p.ltp!=null?p.ltp:'—')+'</td><td class="'+col+'">'+pnl+'</td></tr>';}).join('');}
+homePos.innerHTML=opens.slice(0,6).map(p=>{const pnl=p.pnl!=null?((p.pnl>=0?'+':'')+p.pnl):'—';const col=(p.pnl!=null&&p.pnl<0)?'dn':'up';return '<tr><td><strong>'+p.symbol+'</strong></td><td>'+(p.qty||'')+'</td><td>'+(p.entry!=null?p.entry:'—')+'</td><td>'+(p.ltp!=null?p.ltp:'—')+'</td><td class="'+col+'">'+pnl+'</td></tr>';}).join('');}
+const jn=d.journal||[];const jbody=document.getElementById('home-journal');
+if(jbody){
+  if(!jn.length) jbody.innerHTML='<tr><td colspan="4" class="muted" style="text-align:center;padding:16px">Waiting first fill</td></tr>';
+  else jbody.innerHTML=jn.slice().reverse().slice(0,12).map(j=>{
+    const det=[j.qty,j.price,j.reason,j.pnl].filter(v=>v!=null&&v!=='').join(' · ');
+    return '<tr><td class="muted">'+(j.ts||'').replace('T',' ').replace('Z','')+'</td><td>'+(j.event||'')+'</td><td><strong>'+(j.symbol||'')+'</strong></td><td class="muted">'+det+'</td></tr>';
+  }).join('');
+}
 const orders=d.orders||[];const ordBody=document.getElementById('ord-body');
 if(!orders.length)ordBody.innerHTML='<tr><td colspan="6" class="muted" style="text-align:center;padding:18px">No orders</td></tr>';
 else ordBody.innerHTML=orders.slice(0,30).map(o=>'<tr><td class="muted">'+(o.created_at||'').replace('T',' ').replace('Z','')+'</td><td><strong>'+o.symbol+'</strong></td><td>'+o.side+'</td><td>'+(o.sized_qty!=null?o.sized_qty:o.qty)+'</td><td>'+o.fill_price+'</td><td>'+o.status+'</td></tr>').join('');
@@ -559,16 +570,21 @@ async function loadRobot(){
     paintRobot(d);
   }catch(e){}
 }
-async function runAuto(){
+async function runAuto(quiet){
   try{
     const d=await (await fetch('/api/robot/tick?force=1')).json();
     paintRobot(d);
     await loadBook();
-    const skip=(d.skipped_no_upstox_ltp||[]).length;
-    alert('Robot: bought '+(d.bought||0)+' · sold '+(d.sold||0)+' · no-LTP skip '+skip+' · '+(d.ltp_source||''));
-  }catch(e){alert(e);}
+    if(!quiet){
+      const skip=(d.skipped_no_upstox_ltp||[]).length;
+      alert('Robot: bought '+(d.bought||0)+' · sold '+(d.sold||0)+' · no-LTP skip '+skip+' · '+(d.ltp_source||''));
+    }
+    return d;
+  }catch(e){if(!quiet)alert(e); return null;}
 }
-async function boot(){try{const r=await fetch('/api/health');const d=await r.json();if(d.build){const b=document.querySelector('.brand p');if(b)b.textContent=(d.parameter_set_id||'ash08-5cr-kelly-v1')+' · '+d.build;}if(d.paper_open!=null){const k=document.getElementById('kpi-open');if(k)k.textContent=d.paper_open;document.getElementById('ft-open').textContent='Open '+d.paper_open;}const ux=d.upstox||{};const pill=document.getElementById('upx-pill');if(pill)pill.textContent=ux.connected?'Upstox OK':(ux.token_set||d.upstox_token_set)?'Upstox token':'Upstox off';if(d.robot)paintRobot(d.robot);}catch(e){}try{const u=await fetch('/api/universe/core');const ud=await u.json();if(ud.count){const c=document.getElementById('kpi-core');if(c)c.textContent=ud.count;const u2=document.getElementById('uni-core');if(u2)u2.textContent=ud.count;}}catch(e){}await loadAdvise();await loadBook();await loadRobot();}
+async function boot(){try{const r=await fetch('/api/health');const d=await r.json();if(d.build){const b=document.querySelector('.brand p');if(b)b.textContent=(d.parameter_set_id||'ash08-5cr-kelly-v1')+' · '+d.build;}if(d.paper_open!=null){const k=document.getElementById('kpi-open');if(k)k.textContent=d.paper_open;document.getElementById('ft-open').textContent='Open '+d.paper_open;}const ux=d.upstox||{};const pill=document.getElementById('upx-pill');if(pill)pill.textContent=ux.connected?'Upstox OK':(ux.token_set||d.upstox_token_set)?'Upstox token':'Upstox off';if(d.robot)paintRobot(d.robot);}catch(e){}try{const u=await fetch('/api/universe/core');const ud=await u.json();if(ud.count){const c=document.getElementById('kpi-core');if(c)c.textContent=ud.count;const u2=document.getElementById('uni-core');if(u2)u2.textContent=ud.count;}}catch(e){}await loadAdvise();await loadBook();await loadRobot();
+try{const b=await (await fetch('/api/paper/book')).json(); if(!b.open_count) await runAuto(true);}catch(e){}
+}
 setInterval(loadRobot, 15000);
 boot();
 </script>

@@ -108,6 +108,26 @@ class RobotTests(unittest.TestCase):
             self.assertEqual(eng.positions[0]["status"], "CLOSED")
             self.assertEqual(eng.positions[0]["exit_reason"], "MAX_HOLD")
 
+    def test_after_hours_buys_when_last_exists(self):
+        with tempfile.TemporaryDirectory() as d:
+            eng = PaperEngine(d, book_value=50_000_000)
+            buys = advise()["buy"]
+            prices = {r["symbol"]: float(r["close"]) for r in buys}
+
+            def qfn(syms):
+                return {s: prices[s] for s in syms if s in prices}
+
+            body = tick(
+                eng,
+                quote_fn=qfn,
+                now=datetime(2026, 9, 9, 16, 40),
+                force_buy=False,
+            )
+            self.assertGreaterEqual(body["bought"], 1)
+            self.assertEqual(len([p for p in eng.positions if p.get("status") == "OPEN"]), body["open_count"])
+            self.assertTrue(eng.journal)
+            self.assertEqual(eng.journal[-1]["event"], "BUY")
+
     def test_session_helper_weekday_shape(self):
         s = session_now(datetime(2026, 9, 9, 10, 0))  # Wed
         self.assertIn("buy_window", s)

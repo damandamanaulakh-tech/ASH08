@@ -145,12 +145,36 @@ def tick(
         "skipped_detail": [],
         "open_count": len(engine.open_symbols()),
     }
-    allow_buy = sess["buy_window"] or force_buy
+    allow_buy = bool(live)
     if allow_buy and buys:
         rows = _rows_for_engine(buys, live)
         buy_result = engine.auto_buy_selects(rows, price_map=live)
-    elif not allow_buy:
-        buy_result["skipped_detail"] = [{"symbol": "*", "reason": "outside_buy_window"}]
+    elif not live:
+        buy_result["skipped_detail"] = [{"symbol": "*", "reason": "no_live_ltp"}]
+    elif not buys:
+        buy_result["skipped_detail"] = [{"symbol": "*", "reason": "no_buy_names"}]
+
+    if hasattr(engine, "log_event"):
+        for o in buy_result.get("orders") or []:
+            engine.log_event(
+                "BUY",
+                symbol=o.get("symbol"),
+                qty=o.get("sized_qty") or o.get("qty"),
+                price=o.get("fill_price"),
+                stop=o.get("stop"),
+                target=o.get("target"),
+                source="auto_select",
+            )
+        for s in sold:
+            engine.log_event(
+                "SELL",
+                symbol=s.get("symbol"),
+                price=s.get("exit_price"),
+                reason=s.get("reason"),
+                pnl=s.get("pnl"),
+            )
+        if (buy_result.get("bought") or sold) and hasattr(engine, "_save"):
+            engine._save()
 
     ltp_source = (pack_source or "live") if live else "no_live_ltp"
     body = {
@@ -183,7 +207,7 @@ def tick(
             }
             for o in (buy_result.get("orders") or [])
         ],
-        "note": "Paper. Auto-buy Today's BUY. Auto-sell −3% / +6% / 15d. Live last only (Upstox or Yahoo).",
+        "note": "Paper. Catch-up buy whenever a live last exists. Auto-sell −3/+6/15d. Book persists.",
     }
     with _LOCK:
         _LAST.update(body)

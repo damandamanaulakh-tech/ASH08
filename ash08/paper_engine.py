@@ -139,37 +139,21 @@ class PaperEngine:
         self.book_value = float(book_value if book_value is not None else DEFAULT_BOOK)
         self.governor = GovState("L0_NORMAL", EXPOSURE["L0"], "init")
         self.orders, self.positions = [], []
+        self.journal = []
         self.cash = self.book_value
         self._load()
 
     def _load(self):
-        path = self.data_dir / "paper_state.json"
-        if not path.exists():
+        from ash08.book_store import apply_state, load as load_book
+
+        st, src = load_book(self.data_dir)
+        if not st:
             return
         try:
-            st = json.loads(path.read_text())
+            apply_state(self, st)
+            LOG.info("paper book loaded source=%s opens=%s", src, len(self.open_symbols()))
         except Exception as e:
             LOG.warning("paper_state load failed: %s", e)
-            return
-        self.orders = st.get("orders") or []
-        self.positions = st.get("positions") or []
-        if st.get("cash") is not None:
-            try:
-                self.cash = float(st["cash"])
-            except Exception:
-                self.cash = max(0.0, self.book_value - self._deployed_notional())
-        else:
-            self.cash = max(0.0, self.book_value - self._deployed_notional())
-            for p in self.positions:
-                if p.get("status") != "OPEN":
-                    p["cash_restored"] = True
-        g = st.get("governor") or {}
-        if g.get("level"):
-            self.governor = GovState(
-                str(g.get("level")),
-                float(g.get("exposure_pct") or EXPOSURE["L0"]),
-                str(g.get("rationale") or ""),
-            )
 
     def size_qty(self, qty, price, score=None, sigma=None):
         if price is None or price <= 0:
@@ -534,27 +518,21 @@ class PaperEngine:
             "buy_cost_pct": BUY_COST_PCT,
             "sell_cost_pct": SELL_COST_PCT,
             "max_open": MAX_OPEN_POSITIONS,
+            "journal": list(getattr(self, "journal", []) or [])[-40:],
         }
 
     def _save(self):
-        (self.data_dir / "paper_state.json").write_text(
-            json.dumps(
-                {
-                    "governor": self.governor.to_dict(),
-                    "orders": self.orders,
-                    "positions": self.positions,
-                    "cash": round(self.cash, 2),
-                    "book_value": self.book_value,
-                    "plan": {
-                        "stop_pct": STOP_PCT,
-                        "target_pct": TARGET_PCT,
-                        "max_hold_days": MAX_HOLD_DAYS,
-                        "max_open": MAX_OPEN_POSITIONS,
-                    },
-                },
-                indent=2,
-            )
-        )
+        from ash08.book_store import dump_state, save as save_book
+
+        try:
+            save_book(dump_state(self), self.data_dir)
+        except Exception as e:
+            LOG.warning("paper_state save failed: %s", e)
+
+    def log_event(self, event: str, **kw):
+        row = {"ts": _now(), "event": event, **kw}
+        self.journal = (getattr(self, "journal", None) or []) + [row]
+        self.journal = self.journal[-300:]
 
 
 def run_demo(data_dir):

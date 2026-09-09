@@ -18,7 +18,7 @@ LOG = logging.getLogger("ash08.api")
 DESK = ROOT / "desk"
 PORT = int(os.environ.get("PORT", "10000"))
 DATA_DIR = Path("ash08_data")
-BUILD = "2026-09-09-yahoo-ltp"
+BUILD = "2026-09-09-persist"
 REF_LTP = {
     "TCS": 3840.0, "HDFCBANK": 1690.0, "RELIANCE": 2950.0, "INFY": 1850.0,
     "ICICIBANK": 1180.0, "SBIN": 820.0, "ITC": 450.0, "MTARTECH": 1850.0,
@@ -63,18 +63,6 @@ def get_engine():
     if "PaperEngine" not in MODS:
         return None
     eng = MODS["PaperEngine"](data_dir=str(DATA_DIR))
-    p = DATA_DIR / "paper_state.json"
-    if p.exists():
-        try:
-            st = json.loads(p.read_text())
-            eng.orders = st.get("orders") or []
-            eng.positions = st.get("positions") or []
-            g = st.get("governor") or {}
-            if g and hasattr(eng, "governor"):
-                eng.governor.level = g.get("level", eng.governor.level)
-                eng.governor.exposure_pct = float(g.get("exposure_pct", 100))
-        except Exception as e:
-            LOG.warning("paper load: %s", e)
     _ENGINE = eng
     return eng
 
@@ -165,13 +153,13 @@ def _robot_status():
 
 def _robot_loop():
     try:
-        run_robot_tick(force_buy=False)
+        run_robot_tick(force_buy=True)
     except Exception:
         LOG.exception("robot first tick")
     while True:
         time.sleep(45)
         try:
-            run_robot_tick(force_buy=False)
+            run_robot_tick(force_buy=True)
         except Exception:
             LOG.exception("robot loop")
 
@@ -354,7 +342,7 @@ class Handler(BaseHTTPRequestHandler):
                 "robot": _robot_status(),
                 "ltp": {"source": _LAST_PACK.get("source"), "n": len(_LAST_PACK.get("prices") or {}),
                         "upstox_n": _LAST_PACK.get("upstox_n"), "yahoo_n": _LAST_PACK.get("yahoo_n")},
-                "note": "Paper robot: auto-buy Today's BUY, auto-sell −3/+6/15d. Live last = Upstox else Yahoo.",
+                "note": "Paper robot catch-up: buys Today's BUY when a live last exists. Book persists across sleep.",
             })
         if path == "/api/quotes":
             syms = [s.strip().upper() for s in ((qs.get("symbols") or [""])[0]).split(",") if s.strip()]
@@ -527,9 +515,10 @@ class Handler(BaseHTTPRequestHandler):
             "buy_cost_pct": book.get("buy_cost_pct"),
             "sell_cost_pct": book.get("sell_cost_pct"),
             "max_open": book.get("max_open"),
+            "journal": book.get("journal") or getattr(eng, "journal", []),
             "parameter_set_id": cfg.get("parameter_set_id"),
             "build": BUILD,
-            "note": "Cash is tracked. P&L needs live last (Upstox or Yahoo). Missing quote ≠ fake fill.",
+            "note": "Cash is tracked. Book persists. P&L needs live last. Missing quote ≠ fake fill.",
         })
 
     def api_pnl_tick(self):
