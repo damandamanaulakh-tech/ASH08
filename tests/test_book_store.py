@@ -34,16 +34,16 @@ class BookStoreTests(unittest.TestCase):
     def test_save_restore_keeps_cash_and_journal(self):
         with tempfile.TemporaryDirectory() as d:
             eng = PaperEngine(d, book_value=50_000_000)
-            buys = {"BHARATFORG": 1900.0}
-
-            def qfn(_s):
-                return {"prices": buys, "source": "yahoo"}
-
-            # only one name in price map — others skip no_live_ltp
             from ash08.advisory import payload as advise
 
             names = [r["symbol"] for r in advise()["buy"]]
-            self.assertIn("BHARATFORG", names)
+            self.assertGreaterEqual(len(names), 1)
+            one = names[0]
+            prices = {one: 1900.0 if one != "IDEA" else 15.5}
+
+            def qfn(_s):
+                return {"prices": prices, "source": "yahoo"}
+
             tick(eng, quote_fn=qfn, force_buy=True)
             cash = eng.cash
             self.assertLess(cash, 50_000_000)

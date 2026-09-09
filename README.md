@@ -37,7 +37,7 @@ AM07 was the pattern (robot picker + journal). ASH08 numbers stay: ₹5 Cr, Kell
 
 | Feed | Status |
 |------|--------|
-| 191 `*.NS.csv` through **2026-07-17** | CLOSED — T1 T2 T3 T9 M1 M6 |
+| Yahoo Finance v8 daily 5y, last bar = last session | CLOSED — T1 T2 T3 T9 M1 M6 |
 | NSE bhav 08-Jun-2026 `DELIV_PER` | SNAPSHOT_1D — official, not a fake 20d avg |
 | FII/DII net through **2026-08-07** | CLOSED for size throttle |
 | Mcap ≥ ₹5,000 Cr | PROXY_N200 — no rupee mcap field |

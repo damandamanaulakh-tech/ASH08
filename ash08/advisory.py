@@ -176,7 +176,7 @@ def evaluate_name(row: dict, market: dict, fii_mult: float, fii_why: str) -> dic
     kill = blocked or not mom_ok or t1 != "PASS" or t2 != "PASS" or not adv_ok or not to_ok
     market_stress = not breadth_ok or not trend_ok
     crash_ok = mom_ok and t1 == "PASS" and t2 == "PASS"
-    ocean_path = market_stress and crash_ok and score >= SCORE_SELECT
+    ocean_path = market_stress and crash_ok and score >= SCORE_SELECT and in_m6
     ocean = False
 
     action = "AVOID"
@@ -289,7 +289,7 @@ def payload() -> dict:
         "ok": True,
         "asof": snap.get("asof"),
         "parameter_set_id": "ash08-5cr-kelly-v1",
-        "build": "2026-09-09-advisory",
+        "build": "2026-09-09-tape-yahoo",
         "universe_n": snap.get("universe_n"),
         "buy_n": len(buy),
         "watch_n": len(watch),
@@ -307,7 +307,7 @@ def payload() -> dict:
         "chitty_registry_flag": CHITTY_DECISION_IMPACT,
         "m1_live": True,
         "m1_note": "Advisory ranks on 6m+12m vol-adj. This ships M1 on the advice path.",
-        "px_note": "Reference is last tape close, not live LTP. Paper fill still needs Upstox.",
+        "px_note": "Reference is last tape close. Paper fill needs a live last (Upstox, else Yahoo).",
         "market": market,
         "fii": {**fii, "size_mult": fii_mult, "size_why": fii_why},
         "data_status": snap.get("data_status") or {},

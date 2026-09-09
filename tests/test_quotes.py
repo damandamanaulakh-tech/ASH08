@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from ash08.quotes import quotes_pack, yahoo_symbol
+from ash08.quotes import bars_from_yahoo_chart, quotes_pack, yahoo_symbol
 
 
 class QuotesTests(unittest.TestCase):
@@ -49,6 +49,48 @@ class QuotesTests(unittest.TestCase):
             pack = quotes_pack(["NATIONALUM"], data_dir=d, yahoo_fn=yfn, use_cache=False)
         self.assertEqual(pack["prices"], {})
         self.assertEqual(pack["source"], "no_live_ltp")
+
+    def test_bars_from_chart_skips_nulls_and_needs_60(self):
+        ts = list(range(1_700_000_000, 1_700_000_000 + 70 * 86400, 86400))
+        closes = [None] * 5 + [100.0 + i for i in range(65)]
+        payload = {
+            "chart": {
+                "result": [
+                    {
+                        "timestamp": ts,
+                        "indicators": {
+                            "quote": [
+                                {
+                                    "open": closes,
+                                    "high": closes,
+                                    "low": closes,
+                                    "close": closes,
+                                    "volume": [1_000] * len(ts),
+                                }
+                            ]
+                        },
+                    }
+                ]
+            }
+        }
+        bars = bars_from_yahoo_chart(payload)
+        self.assertIsNotNone(bars)
+        self.assertEqual(len(bars["closes"]), 65)
+        self.assertEqual(bars["closes"][0], 100.0)
+        self.assertGreaterEqual(len(bars["dates"][0]), 10)
+
+    def test_bars_from_chart_none_when_thin(self):
+        payload = {
+            "chart": {
+                "result": [
+                    {
+                        "timestamp": [1_700_000_000],
+                        "indicators": {"quote": [{"close": [10.0], "open": [10], "high": [10], "low": [10], "volume": [1]}]},
+                    }
+                ]
+            }
+        }
+        self.assertIsNone(bars_from_yahoo_chart(payload))
 
 
 if __name__ == "__main__":
