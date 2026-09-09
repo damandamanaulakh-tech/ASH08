@@ -7,6 +7,8 @@ import json, logging, mimetypes, os, sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
+import threading
+import time
 
 ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
@@ -130,6 +132,37 @@ def auto_buy_from_scan(scan_dict):
         return {"error": str(e)}
     result["skipped_no_upstox_ltp"] = skipped_px
     return result
+
+
+def run_robot_tick(force_buy=False):
+    from ash08.robot import tick as robot_tick
+    eng = get_engine()
+    if not eng:
+        return {"ok": False, "error": "paper engine missing", "armed": False}
+    try:
+        body = robot_tick(eng, quote_fn=quotes_for_symbols, force_buy=force_buy)
+    except Exception as e:
+        LOG.exception("robot tick")
+        return {"ok": False, "error": str(e), "armed": True}
+    body["upstox"] = upstox_status()
+    return body
+
+
+def _robot_status():
+    try:
+        from ash08.robot import status as robot_status
+        return robot_status()
+    except Exception as e:
+        return {"ok": False, "error": str(e), "armed": False}
+
+
+def _robot_loop():
+    while True:
+        time.sleep(45)
+        try:
+            run_robot_tick(force_buy=False)
+        except Exception:
+            LOG.exception("robot loop")
 
 
 def _mgr():
@@ -302,10 +335,11 @@ class Handler(BaseHTTPRequestHandler):
                 "trade_plan": public_config()["trade_plan"],
                 "contract": public_config(),
                 "universe": (_mgr().status() if _mgr() else {}),
-                "build": "2026-09-09-advisory",
+                "build": "2026-09-09-robot",
                 "parameter_set_id": public_config()["parameter_set_id"],
                 "advise": advise_n,
-                "note": "Front is Today's Advice. Tape close is the reference. Paper fill needs live LTP.",
+                "robot": _robot_status(),
+                "note": "Paper robot: auto-buy Today's BUY, auto-sell −3/+6/15d. Live LTP only.",
             })
         if path == "/api/universe/core":
             core = ensure_core(force=False)
@@ -396,13 +430,14 @@ class Handler(BaseHTTPRequestHandler):
             }
             return self.api_paper_buy(body)
         if path == "/api/paper/auto":
-            if "store" not in MODS:
-                return self.json(500, {"ok": False, "error": "store missing"})
-            scan = MODS["store"]().load_scan() or {}
-            if not scan.get("rows"):
-                scan_core(auto_buy=False)
-                scan = MODS["store"]().load_scan() or {}
-            return self.json(200, {"ok": True, "auto_paper": auto_buy_from_scan(scan), "upstox": upstox_status()})
+            return self.json(200, run_robot_tick(force_buy=True))
+        if path in ("/api/robot/tick", "/api/robot/run"):
+            force = (qs.get("force") or ["0"])[0] in ("1", "true", "yes")
+            return self.json(200, run_robot_tick(force_buy=force))
+        if path in ("/api/robot", "/api/robot/status"):
+            st = _robot_status()
+            st["upstox"] = upstox_status()
+            return self.json(200, st)
         if path in ("/api/history", "/api/history/yoy"):
             from ash08.governor_lock import payload as hist
             return self.json(200, hist())
@@ -572,7 +607,9 @@ def main():
     except Exception as e:
         LOG.warning("ensure_core: %s", e)
     get_engine()
-    LOG.info("ASH08 on 0.0.0.0:%s paper=%s seed_pool=%s core=%s upstox=%s",
+    t = threading.Thread(target=_robot_loop, name="ash08-robot", daemon=True)
+    t.start()
+    LOG.info("ASH08 on 0.0.0.0:%s paper=%s seed_pool=%s core=%s upstox=%s robot=on",
              PORT, "PaperEngine" in MODS, CORE_COUNT, len(core_symbols_live()),
              upstox_status().get("detail"))
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()

@@ -312,8 +312,9 @@ class PaperEngine:
     def open_symbols(self):
         return {p["symbol"] for p in self.positions if p.get("status") == "OPEN"}
 
-    def refresh_hold_days(self):
+    def refresh_hold_days(self, live_symbols=None):
         now = datetime.now(timezone.utc)
+        live_symbols = {str(s).upper() for s in (live_symbols or [])}
         changed = False
         for p in self.positions:
             if p.get("status") != "OPEN":
@@ -326,6 +327,11 @@ class PaperEngine:
             p["days_held"] = held
             p["days_left"] = max(0, hold - held)
             if held >= hold:
+                sym = str(p.get("symbol") or "").upper()
+                if live_symbols and sym not in live_symbols:
+                    continue
+                if not live_symbols:
+                    continue
                 p["status"] = "CLOSED"
                 p["exit_reason"] = "MAX_HOLD"
                 p["exit_price"] = p.get("ltp") or p.get("entry")
@@ -340,6 +346,7 @@ class PaperEngine:
 
     def mark_to_market(self, price_map=None, use_paper_marks=False):
         price_map = price_map or {}
+        live_syms = set()
         for p in self.positions:
             sym = str(p.get("symbol") or "").upper()
             if p.get("status") != "OPEN":
@@ -351,34 +358,37 @@ class PaperEngine:
                     )
                 )
                 continue
-            ltp = price_map.get(sym)
-            if ltp is None and use_paper_marks:
-                ltp = p.get("ltp") or p.get("entry")
-            if ltp is None:
-                ltp = p.get("ltp") or p.get("entry")
+            quoted = price_map.get(sym)
+            have_live = quoted is not None
+            if quoted is None and use_paper_marks:
+                quoted = p.get("ltp") or p.get("entry")
+            if quoted is None:
+                quoted = p.get("ltp") or p.get("entry")
             try:
-                ltp = float(ltp)
+                ltp = float(quoted)
             except Exception:
                 ltp = float(p.get("entry") or 0)
             p["ltp"] = round(ltp, 2)
             p["mark_value"] = round(ltp * float(p.get("qty") or 0), 2)
             p["entry_value"] = round(float(p.get("entry") or 0) * float(p.get("qty") or 0), 2)
-            if p.get("stop") is not None and ltp <= float(p["stop"]):
-                p["status"] = "CLOSED"
-                p["exit_reason"] = "STOP_HIT"
-                p["exit_price"] = ltp
-                p["closed_at"] = _now()
-                self._settle_close(p)
-            elif p.get("target") is not None and ltp >= float(p["target"]):
-                p["status"] = "CLOSED"
-                p["exit_reason"] = "TARGET_HIT"
-                p["exit_price"] = ltp
-                p["closed_at"] = _now()
-                self._settle_close(p)
+            if have_live:
+                live_syms.add(sym)
+                if p.get("stop") is not None and ltp <= float(p["stop"]):
+                    p["status"] = "CLOSED"
+                    p["exit_reason"] = "STOP_HIT"
+                    p["exit_price"] = ltp
+                    p["closed_at"] = _now()
+                    self._settle_close(p)
+                elif p.get("target") is not None and ltp >= float(p["target"]):
+                    p["status"] = "CLOSED"
+                    p["exit_reason"] = "TARGET_HIT"
+                    p["exit_price"] = ltp
+                    p["closed_at"] = _now()
+                    self._settle_close(p)
             st = p.get("status") or "OPEN"
             fields = _pnl_fields(p.get("entry"), p.get("ltp"), p.get("qty"), p.get("exit_price"), st)
             p.update(fields)
-        self.refresh_hold_days()
+        self.refresh_hold_days(live_symbols=live_syms)
         self._save()
 
     def update_ltp(self, symbol, ltp):
@@ -446,6 +456,8 @@ class PaperEngine:
                 continue
             score = row.get("score")
             sigma = row.get("vol_sigma")
+            if sigma is None:
+                sigma = row.get("sigma")
             if sigma is None:
                 skipped.append({"symbol": sym, "reason": "no_vol"})
                 continue

@@ -1,9 +1,22 @@
-# ASH08 Desk — Today's Advice
+# ASH08 Desk — paper robot
 
-ASH08 is a paper-only NSE **advisory** desk. Own repo. Not AshStocks. Not AM07.
-Render deploys **this** repo (`damandamanaulakh-tech/ASH08`). That is the only live desk.
+ASH08 is a paper-only NSE desk. Own repo. Not AshStocks. Not AM07.
+Render deploys **this** repo (`damandamanaulakh-tech/ASH08`).
 
-Front of the app is **Today's Advice**: BUY / WATCH / AVOID with ½-Kelly size, stop −3%, target +6%, hold 15d, and a written why. YoY lock and factor-comparison tables live under **Lab**, not the home screen.
+**Front is Today's Advice.** The robot **buys those BUY names itself** and **sells itself** on −3% stop / +6% target / 15d hold. Paper only. Live Upstox LTP or skip — no invented fill.
+
+## What the robot does
+
+| When | Action |
+|------|--------|
+| NSE session 09:15–15:30 IST | Auto-buy today's BUY list at **live LTP**, ½-Kelly, cash hold 5% |
+| Same session + 15:30–15:40 mark | Auto-sell if live LTP hits stop −3% or target +6% |
+| 15 calendar days | Auto-sell MAX_HOLD when a live quote exists |
+| No live LTP | **No buy, no sell.** P&L stays 0 on that name |
+
+Background tick every 45s while the service is up. Manual: `/api/robot/tick?force=1`.
+
+AM07 was the pattern (robot picker + journal). ASH08 numbers stay: ₹5 Cr, Kelly, SELECT 68, −3 / +6 / 15d. Not AM07's ₹50L / ₹1.25L / −5 / +20.
 
 ## Locked runtime (ash08/config.py)
 
@@ -13,11 +26,6 @@ Front of the app is **Today's Advice**: BUY / WATCH / AVOID with ½-Kelly size, 
 | SELECT / BUY | score ≥ **68** (68–70 is full BUY, near-miss ledger only) |
 | WATCH | **55** ≤ score < 68 |
 | Rank | M1 6m+12m vol-adj, M6 N = **25** |
-| Corr vs book | ≤ **0.70** |
-| ADV20 | ≥ 2,00,000 |
-| 5d turnover | ≥ ₹5 Cr |
-| 6M momentum | > 0 |
-| T1 / T2 / T3 | close > SMA200 / ATR% ≤ 8 / **no** min-price bar |
 | Size | ½-Kelly (IC 0.05 assumed, cap 5% of book, floor 67) |
 | FII | size throttle only, not SELECT |
 | Cash reserve | 5% — cash is tracked, 0.10% buy + 0.10% sell |
@@ -25,32 +33,26 @@ Front of the app is **Today's Advice**: BUY / WATCH / AVOID with ½-Kelly size, 
 | Stop / target / hold | −3% / +6% / 15 sessions |
 | Governor L0–L4 | 100 / 70 / 50 / 25 / 15 % |
 
-`backup/aug24-fail-closed` is archive (SELECT 67 / WATCH 60). It is not `main`.
-
-## Tape (release `FIIDII30000stocksdata`)
+## Tape
 
 | Feed | Status |
 |------|--------|
-| 191 `*.NS.csv` through **2026-07-17** | CLOSED — T1 T2 T3 T9 M1 M6 ROC20 ADV turnover |
+| 191 `*.NS.csv` through **2026-07-17** | CLOSED — T1 T2 T3 T9 M1 M6 |
 | NSE bhav 08-Jun-2026 `DELIV_PER` | SNAPSHOT_1D — official, not a fake 20d avg |
-| FII/DII net through **2026-08-07** | CLOSED for size throttle (+480 Cr last print) |
-| Mcap ≥ ₹5,000 Cr | PROXY_N200 — fundamentals have income/cashflow only, no `marketCap` |
+| FII/DII net through **2026-08-07** | CLOSED for size throttle |
+| Mcap ≥ ₹5,000 Cr | PROXY_N200 — no rupee mcap field |
 | India VIX / 22k | HELD |
-| Live Upstox LTP | MISSING — paper fill stays 0, no invented mark |
-
-Reference price on an advice card is the last tape close. Paper BUY still needs live LTP.
 
 ## Endpoints
 
 | Path | What |
 |------|------|
-| `/` | Today's Advice |
-| `/api/advise` | BUY / WATCH / AVOID JSON |
+| `/` | Today's Advice + robot status |
+| `/api/advise` | BUY / WATCH / AVOID |
+| `/api/robot/tick` | Run one paper cycle (`?force=1` ignores session window) |
+| `/api/robot/status` | Last tick |
 | `/api/paper/book` | Cash / equity / opens / closed |
-| `/api/history` | YoY lock (Lab) |
-| `/api/factors` | 2024-07-05 factor lab (Lab) |
-| `/api/gaps` | Infinity vs desk |
-| `/api/health` | `build=2026-09-09-advisory` |
+| `/api/health` | `build=2026-09-09-robot` |
 
 ## Run
 
