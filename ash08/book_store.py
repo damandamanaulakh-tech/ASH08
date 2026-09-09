@@ -77,6 +77,10 @@ def dump_state(engine) -> Dict[str, Any]:
         "positions": list(engine.positions),
         "pending_orders": list(getattr(engine, "pending_orders", []) or []),
         "journal": list(getattr(engine, "journal", []) or [])[-300:],
+        "shadow": dict(getattr(engine, "shadow", None) or {}),
+        "equity_history": list(getattr(engine, "equity_history", None) or [])[-500:],
+        "peak_equity": float(getattr(engine, "peak_equity", 0) or 0),
+        "clock_last": dict(getattr(engine, "clock_last", None) or {}),
         "cash": round(float(engine.cash), 2),
         "book_value": float(engine.book_value),
     }
@@ -87,6 +91,13 @@ def apply_state(engine, st: dict) -> None:
     engine.positions = st.get("positions") or []
     engine.pending_orders = list(st.get("pending_orders") or [])
     engine.journal = list(st.get("journal") or [])[-300:]
+    engine.shadow = dict(st.get("shadow") or {})
+    engine.equity_history = list(st.get("equity_history") or [])
+    engine.clock_last = dict(st.get("clock_last") or {})
+    try:
+        engine.peak_equity = float(st.get("peak_equity") or engine.book_value)
+    except Exception:
+        engine.peak_equity = float(engine.book_value)
     if st.get("cash") is not None:
         try:
             engine.cash = float(st["cash"])

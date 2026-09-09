@@ -141,6 +141,10 @@ class PaperEngine:
         self.orders, self.positions = [], []
         self.pending_orders = []
         self.journal = []
+        self.shadow: Dict[str, dict] = {}
+        self.equity_history: List[tuple] = []
+        self.peak_equity = float(self.book_value)
+        self.clock_last: Dict[str, str] = {}
         self.cash = self.book_value
         self._load()
 
@@ -388,6 +392,8 @@ class PaperEngine:
         score=None,
         sigma=None,
         why=None,
+        mode="momentum",
+        segment=None,
     ):
         side = str(side or "BUY").upper()
         ot = str(order_type or "MARKET").upper()
@@ -469,6 +475,10 @@ class PaperEngine:
                     "source": source,
                     "score": score,
                     "why": why,
+                    "mode": mode or "momentum",
+                    "segment": segment or "",
+                    "notes": "",
+                    "tags": [],
                     "stop_pct": STOP_PCT,
                     "target_pct": TARGET_PCT,
                     "exit_plan": order["exit_plan"],
@@ -570,6 +580,16 @@ class PaperEngine:
             fields = _pnl_fields(p.get("entry"), p.get("ltp"), p.get("qty"), p.get("exit_price"), st)
             p.update(fields)
         self.refresh_hold_days(live_symbols=live_syms)
+        self.mark_shadow(price_map)
+        try:
+            eq = round(self.cash + sum(
+                float(p.get("mark_value") or 0) for p in self.positions if p.get("status") == "OPEN"
+            ), 2)
+            self.equity_history = (self.equity_history or [])[-500:] + [(_now(), eq)]
+            if eq > float(self.peak_equity or 0):
+                self.peak_equity = eq
+        except Exception:
+            pass
         self._save()
 
     def update_ltp(self, symbol, ltp):
@@ -651,6 +671,8 @@ class PaperEngine:
                 score=score,
                 sigma=sigma,
                 why=row.get("why") or row.get("reason"),
+                mode=row.get("mode") or "momentum",
+                segment=row.get("segment"),
             )
             if order.get("status") == "FILLED":
                 already.add(sym)
@@ -730,7 +752,116 @@ class PaperEngine:
                 "capital_used": capital_used,
                 "net_pct_of_capital": round(realized / self.book_value * 100.0, 2) if self.book_value else 0.0,
             },
+            "shadow": list((self.shadow or {}).values()),
+            "clock_last": dict(self.clock_last or {}),
         }
+
+    def expire_day_limits(self) -> int:
+        n = 0
+        for o in list(self.pending_orders or []):
+            if o.get("status") != "OPEN":
+                continue
+            o["status"] = "EXPIRED"
+            o["note"] = "day validity over (15:25 IST)"
+            self.log_event("LIMIT_EXPIRED", symbol=o.get("symbol"), order_id=o.get("order_id"))
+            n += 1
+        self.pending_orders = [o for o in self.pending_orders if o.get("status") == "OPEN"]
+        if n:
+            self._save()
+        return n
+
+    def square_off_mode(self, mode: str, price_map=None) -> dict:
+        price_map = price_map or {}
+        mode = str(mode or "").lower()
+        closed, skipped = [], []
+        for p in list(self.positions):
+            if p.get("status") != "OPEN":
+                continue
+            if str(p.get("mode") or "").lower() != mode:
+                continue
+            sym = str(p.get("symbol") or "").upper()
+            px = price_map.get(sym)
+            try:
+                px = float(px) if px is not None else None
+            except Exception:
+                px = None
+            if px is None or px <= 0:
+                skipped.append({"symbol": sym, "reason": "no_live_ltp"})
+                continue
+            self.close_position(sym, px, reason="INTRADAY_SQUARE", source="clock")
+            closed.append(sym)
+        return {"closed": closed, "skipped": skipped}
+
+    def set_notes(self, symbol: str, notes: str = "", tags=None) -> bool:
+        pos = self._open_pos(symbol)
+        if not pos:
+            return False
+        pos["notes"] = str(notes or "")
+        if tags is not None:
+            if isinstance(tags, str):
+                tags = [t.strip() for t in tags.split(",") if t.strip()]
+            pos["tags"] = list(tags)
+        self._save()
+        return True
+
+    def ingest_shadow(self, buy_rows, skipped, price_map=None):
+        """Track BUY names the robot did not open — opportunity cost, ASH08 rails."""
+        price_map = price_map or {}
+        skip_map = {}
+        for s in skipped or []:
+            sym = str(s.get("symbol") or "").upper()
+            if sym and sym != "*":
+                skip_map[sym] = s.get("reason") or "skipped"
+        held = self.open_symbols()
+        for row in buy_rows or []:
+            sym = str(row.get("symbol") or "").upper()
+            if not sym:
+                continue
+            if sym in held:
+                self.shadow.pop(sym, None)
+                continue
+            if sym not in skip_map:
+                continue
+            px = price_map.get(sym) or row.get("ltp") or row.get("close")
+            try:
+                px = float(px) if px is not None else None
+            except Exception:
+                px = None
+            if not px or px <= 0:
+                continue
+            prev = self.shadow.get(sym) or {}
+            self.shadow[sym] = {
+                "ticker": sym,
+                "score": row.get("score"),
+                "skip_reason": skip_map[sym],
+                "entry_px": prev.get("entry_px") or round(px, 2),
+                "last_px": round(px, 2),
+                "status": prev.get("status") or "open",
+                "stop": round(px * (1 - STOP_PCT / 100.0), 2),
+                "target": round(px * (1 + TARGET_PCT / 100.0), 2),
+                "why": row.get("why") or row.get("reason"),
+            }
+        self._save()
+
+    def mark_shadow(self, price_map=None):
+        price_map = price_map or {}
+        for s in (self.shadow or {}).values():
+            if s.get("status") != "open":
+                continue
+            px = price_map.get(str(s.get("ticker") or "").upper())
+            try:
+                px = float(px) if px is not None else None
+            except Exception:
+                px = None
+            if not px:
+                continue
+            entry = float(s.get("entry_px") or px)
+            s["last_px"] = round(px, 2)
+            s["pnl_pct"] = round((px / entry - 1.0) * 100.0, 2) if entry else 0.0
+            if px <= float(s.get("stop") or 0):
+                s["status"] = "stop"
+            elif px >= float(s.get("target") or 0):
+                s["status"] = "target"
 
     def _save(self):
         from ash08.book_store import dump_state, save as save_book

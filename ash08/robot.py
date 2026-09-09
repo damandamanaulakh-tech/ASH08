@@ -149,6 +149,8 @@ def tick(
     if allow_buy and buys:
         rows = _rows_for_engine(buys, live)
         buy_result = engine.auto_buy_selects(rows, price_map=live)
+        if hasattr(engine, "ingest_shadow"):
+            engine.ingest_shadow(rows, buy_result.get("skipped_detail") or [], live)
     elif not live:
         buy_result["skipped_detail"] = [{"symbol": "*", "reason": "no_live_ltp"}]
     elif not buys:

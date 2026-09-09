@@ -89,6 +89,7 @@ table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:9px 10px;
 <span class="pill" id="upx-pill">Upstox</span>
 <span class="pill" id="ltp-pill">LTP</span>
 <span class="pill" id="gov-pill">Gov L0</span>
+<span class="pill" id="clock-pill">Clock</span>
 </div>
 <div style="display:flex;gap:8px">
 <button class="btn green" onclick="runAuto()">Run robot now</button>
@@ -97,23 +98,32 @@ table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:9px 10px;
 <div class="layout">
 <nav>
 <div class="sec">Desk</div>
-<button class="active" data-view="home">Dashboard</button>
-<button data-view="scanner">Scanner</button>
+<button class="active" data-view="home">Master Dashboard</button>
+<button data-view="scanner">Scan / Watchlist</button>
 <button data-view="detail">Why this stock</button>
+<button data-view="piano">Signal piano</button>
+<button data-view="register">Selection register</button>
+<button data-view="triggers">Trigger layer</button>
 <div class="sec">Book</div>
 <button data-view="ticket">Buy / Sell ticket</button>
 <button data-view="positions">Open positions</button>
 <button data-view="closed">Closed trades</button>
+<button data-view="shadow">Shadow book</button>
 <button data-view="watchlist">Watchlist</button>
-<div class="sec">Risk</div>
-<button data-view="governor">Risk Governor</button>
-<button data-view="piano">Parameter Piano</button>
-<button data-view="universe">Universe</button>
-<button data-view="segments">Segments</button>
-<div class="sec">Lab</div>
+<div class="sec">Risk & clock</div>
+<button data-view="risk">Risk live</button>
+<button data-view="governor">Governor L0–L4</button>
+<button data-view="alerts">Alerts</button>
+<button data-view="engine">Engine / clock</button>
+<div class="sec">ASH08 extras</div>
+<button data-view="strategy">Strategy (locked)</button>
+<button data-view="reports">Reports</button>
 <button data-view="history">YoY lock</button>
 <button data-view="factors">Factors</button>
-<button data-view="horizons">4 Horizons</button>
+<button data-view="universe">Universe</button>
+<button data-view="segments">Segments</button>
+<button data-view="horizons">5 horizons</button>
+<button data-view="settings">Settings</button>
 </nav>
 <main>
 <section class="view active" id="view-home">
@@ -228,6 +238,7 @@ table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:9px 10px;
 <div><label>Price / Limit</label><input id="tk-price" type="number" step="0.05" placeholder="auto live last"/></div>
 <div><label>Stop</label><input id="tk-stop" type="number" step="0.05" placeholder="auto −3%"/></div>
 <div><label>Target</label><input id="tk-target" type="number" step="0.05" placeholder="auto +6%"/></div>
+<div><label>Horizon</label><select id="tk-mode" style="width:100%;background:#0b1220;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:9px"><option value="momentum">Momentum</option><option value="intraday">Intraday (15:25 square)</option><option value="short">Short</option><option value="swing">Swing</option><option value="positional">Positional</option></select></div>
 </div>
 <div class="btn-row"><button class="buy" id="btn-buy" onclick="paperOrder()">Place paper order</button><button class="sell" onclick="document.getElementById('tk-side').value='SELL';paperOrder()">SELL</button><button class="ghost" onclick="showView('positions')">Open book</button></div>
 <div id="buy-msg" class="muted"></div></div>
@@ -275,11 +286,88 @@ table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:9px 10px;
 <tbody id="closed-body"><tr><td colspan="10" class="muted" style="text-align:center;padding:18px">No closed trades yet</td></tr></tbody></table></div>
 </section>
 <section class="view" id="view-horizons">
-<div class="horizons">
-<div class="hz"><strong>Intraday</strong><span>0–1 day</span></div>
-<div class="hz"><strong>Swing</strong><span>2–10 days</span></div>
-<div class="hz"><strong>Positional</strong><span>2–8 weeks</span></div>
-<div class="hz"><strong>Portfolio</strong><span>3M+</span></div>
+<p class="muted">Five engines tag the book. Rails stay ASH08 −3 / +6. Intraday also squares at 15:25 IST. Momentum is Today's Advice (½-Kelly, 15d).</p>
+<div class="horizons" id="hz-cards" style="grid-template-columns:repeat(5,1fr)"></div>
+</section>
+<section class="view" id="view-shadow">
+<div class="kpis"><div class="kpi"><span>Tracked</span><strong id="sh-n">0</strong></div><div class="kpi"><span>Still open</span><strong id="sh-open">0</strong></div><div class="kpi"><span>Hit +6%</span><strong id="sh-t" class="up">0</strong></div><div class="kpi"><span>Hit −3%</span><strong id="sh-s" class="dn">0</strong></div></div>
+<p class="muted" id="sh-note">YES names the robot did not buy — opportunity cost on ASH08 rails.</p>
+<div class="panel"><div class="panel-h"><h3>Shadow book</h3></div>
+<table><thead><tr><th>Ticker</th><th>Score</th><th>Skip</th><th>Entry</th><th>Now</th><th>P&L</th><th>Status</th></tr></thead>
+<tbody id="sh-body"><tr><td colspan="7" class="muted" style="text-align:center;padding:16px">Empty</td></tr></tbody></table></div>
+</section>
+<section class="view" id="view-register">
+<div class="kpis"><div class="kpi"><span>Rows</span><strong id="reg-n">—</strong></div><div class="kpi"><span>BUY</span><strong id="reg-buy" class="up">—</strong></div><div class="kpi"><span>WATCH</span><strong id="reg-watch">—</strong></div><div class="kpi"><span>AVOID</span><strong id="reg-avoid">—</strong></div></div>
+<div class="panel"><div class="panel-h"><h3>Selection register</h3><span class="muted" id="reg-asof">Today's Advice</span></div>
+<div class="scroll"><table><thead><tr><th>Symbol</th><th>Action</th><th>Rank</th><th>Score</th><th>Pass</th><th>Fail</th><th>Why</th></tr></thead>
+<tbody id="reg-body"></tbody></table></div></div>
+</section>
+<section class="view" id="view-triggers">
+<div class="panel"><div class="panel-h"><h3>Trigger layer</h3><span class="muted">Chitty CN-018/022/021 + T1 T2 T9 — display, rails still −3/+6</span></div>
+<div class="scroll"><table><thead><tr><th>Symbol</th><th>Action</th><th>CN-018</th><th>CN-022</th><th>CN-021</th><th>T1</th><th>T2</th><th>T9</th><th>Why</th></tr></thead>
+<tbody id="tr-body"></tbody></table></div></div>
+</section>
+<section class="view" id="view-risk">
+<div class="kpis6">
+<div class="kpi"><span>Equity</span><strong id="rk-eq">—</strong></div>
+<div class="kpi"><span>Peak</span><strong id="rk-peak">—</strong></div>
+<div class="kpi"><span>Drawdown</span><strong id="rk-dd">—</strong></div>
+<div class="kpi"><span>Consec losses</span><strong id="rk-consec">—</strong></div>
+<div class="kpi"><span>Deployed</span><strong id="rk-dep">—</strong></div>
+<div class="kpi"><span>Kill</span><strong id="rk-kill">—</strong></div>
+</div>
+<div class="grid2">
+<div class="card"><h4>Live governor</h4>
+<div class="row"><span class="muted">Level</span><strong id="rk-gov">—</strong></div>
+<div class="row"><span class="muted">Exposure</span><strong id="rk-exp">—</strong></div>
+<div class="row"><span class="muted">Cash / reserve</span><strong id="rk-cash">—</strong></div>
+<div class="exp"><i id="rk-bar" style="width:100%"></i></div>
+</div>
+<div class="panel"><div class="panel-h"><h3>Open by segment / mode</h3></div>
+<table><thead><tr><th>Bucket</th><th>N</th></tr></thead><tbody id="rk-seg"></tbody></table></div>
+</div>
+</section>
+<section class="view" id="view-alerts">
+<div class="panel"><div class="panel-h"><h3>Alerts</h3><span class="muted">SELL / STOP / CLOCK_FAILED / skips — append-only journal</span></div>
+<table><thead><tr><th>When</th><th>Event</th><th>Name</th><th>Detail</th></tr></thead>
+<tbody id="al-body"></tbody></table></div>
+<div class="panel"><div class="panel-h"><h3>Last skip tape</h3></div>
+<table><thead><tr><th>Name</th><th>Reason</th></tr></thead>
+<tbody id="al-skips"></tbody></table></div>
+</section>
+<section class="view" id="view-engine">
+<div class="kpis"><div class="kpi"><span>Open</span><strong id="en-open">—</strong></div><div class="kpi"><span>Pending</span><strong id="en-pend">—</strong></div><div class="kpi"><span>Shadow</span><strong id="en-sh">—</strong></div><div class="kpi"><span>Journal</span><strong id="en-j">—</strong></div></div>
+<div class="panel"><div class="panel-h"><h3>IST clock</h3><span class="muted" id="en-now">—</span></div>
+<table><thead><tr><th>Job</th><th>When</th><th>Today</th></tr></thead>
+<tbody id="en-jobs"></tbody></table></div>
+<div class="card"><h4>Robot</h4><pre id="en-robot" class="muted" style="white-space:pre-wrap;font-size:11px"></pre></div>
+</section>
+<section class="view" id="view-strategy">
+<p class="muted">Locked in <code>ash08/config.py</code>. Settings cannot change these.</p>
+<div class="panel"><div class="panel-h"><h3>Strategy weights</h3></div>
+<table><thead><tr><th>ID</th><th>Item</th><th>Value</th><th>Note</th></tr></thead>
+<tbody id="st-body"></tbody></table></div>
+</section>
+<section class="view" id="view-reports">
+<div class="grid2">
+<div class="panel"><div class="panel-h"><h3>P&L by exit reason</h3></div>
+<table><thead><tr><th>Reason</th><th>N</th><th>Net</th></tr></thead><tbody id="rp-reason"></tbody></table></div>
+<div class="panel"><div class="panel-h"><h3>By symbol</h3></div>
+<table><thead><tr><th>Symbol</th><th>N</th><th>Net</th></tr></thead><tbody id="rp-sym"></tbody></table></div>
+</div>
+<div class="panel"><div class="panel-h"><h3>By day</h3></div>
+<table><thead><tr><th>Day</th><th>N</th><th>Net</th></tr></thead><tbody id="rp-day"></tbody></table></div>
+</section>
+<section class="view" id="view-settings">
+<div class="banner"><div><strong>Paper only. Live locked.</strong> Formula is not a knob.</div><div class="muted" id="set-build">—</div></div>
+<div class="grid2">
+<div class="card"><h4>Runtime</h4>
+<div class="row"><span class="muted">Upstox</span><strong id="set-upx">—</strong></div>
+<div class="row"><span class="muted">Robot</span><strong id="set-robot">—</strong></div>
+<div class="row"><span class="muted">Clock now</span><strong id="set-clock">—</strong></div>
+</div>
+<div class="panel"><div class="panel-h"><h3>Locks</h3></div>
+<table><thead><tr><th>Item</th><th>Value</th></tr></thead><tbody id="set-locks"></tbody></table></div>
 </div>
 </section>
 <section class="view" id="view-watchlist">
@@ -362,7 +450,7 @@ table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:9px 10px;
 </main></div>
 <div class="footer-bar"><span class="build">ASH08 paper robot</span><span id="ft-core">N200 191</span><span id="ft-eq">Eq ₹5.00 Cr</span><span id="ft-cash">Cash ₹5.00 Cr</span><span id="ft-open">Open 0</span><span id="ft-robot">Robot —</span></div>
 <script>
-function showView(id){document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));const v=document.getElementById('view-'+id);if(v)v.classList.add('active');const b=document.querySelector('nav button[data-view="'+id+'"]');if(b)b.classList.add('active');if(id==='positions'||id==='home'||id==='closed'){loadBook();if(id==='home'){loadAdvise();loadIndices();loadRobot();}}if(id==='watchlist')loadWatch();if(id==='segments')loadSegments();if(id==='history')loadHistory();if(id==='factors')loadFactors();if(id==='piano'){loadPianoSummary();selectNote(document.querySelector('.note.active')||document.querySelector('.note'), (document.querySelector('.note.active')||document.querySelector('.note')).dataset.param);}}
+function showView(id){document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));const v=document.getElementById('view-'+id);if(v)v.classList.add('active');const b=document.querySelector('nav button[data-view="'+id+'"]');if(b)b.classList.add('active');if(id==='positions'||id==='home'||id==='closed'){loadBook();if(id==='home'){loadAdvise();loadIndices();loadRobot();}}if(id==='watchlist')loadWatch();if(id==='segments')loadSegments();if(id==='history')loadHistory();if(id==='factors')loadFactors();if(id==='piano'){loadPianoSummary();selectNote(document.querySelector('.note.active')||document.querySelector('.note'), (document.querySelector('.note.active')||document.querySelector('.note')).dataset.param);}if(id==='shadow')loadShadow();if(id==='register')loadRegister();if(id==='triggers')loadTriggers();if(id==='risk')loadRisk();if(id==='alerts')loadAlerts();if(id==='engine')loadEngine();if(id==='strategy'||id==='horizons')loadStrategy();if(id==='reports')loadReports();if(id==='settings')loadSettings();}
 document.querySelectorAll('nav button').forEach(btn=>btn.addEventListener('click',()=>showView(btn.dataset.view)));
 function fillPianoList(el, rows, emptyScan){
   if(!rows||!rows.length){el.innerHTML='<div class="muted">'+(emptyScan?'Empty scan':'None')+'</div>';return;}
@@ -560,7 +648,7 @@ async function runDemo(){try{const r=await fetch('/api/demo/run');const d=await 
 async function runScan(){try{const r=await fetch('/api/scan/run');const d=await r.json();if(d.ok){await loadScan();await loadBook();await loadPianoSummary();}else await runDemo();}catch(e){await runDemo();}}
 function openDetail(row){document.getElementById('det-sym').textContent=row.symbol||'';document.getElementById('det-dec').textContent=row.decision||'—';document.getElementById('det-score').textContent=row.score!=null?row.score:'—';document.getElementById('det-reason').textContent=row.reason||'';document.getElementById('det-hits').innerHTML=(row.hits||[]).map(h=>{const st=(h.status||(h.passed?'PASS':'FAIL')).toUpperCase();const cls=st==='PASS'?'select':st==='UNKNOWN'?'unknown':'reject';return '<div class="row"><span>'+h.param_id+'</span><span class="tag '+cls+'">'+st+'</span></div>';}).join('')||'—';document.getElementById('tk-sym').value=row.symbol||'';if(row.ltp)document.getElementById('tk-price').value=row.ltp;showView('detail');}
 async function paperBuy(){return paperOrder();}
-async function paperOrder(){const msg=document.getElementById('buy-msg'),btn=document.getElementById('btn-buy');const symbol=(document.getElementById('tk-sym').value||'').trim().toUpperCase();const qty=document.getElementById('tk-qty').value||'50';const price=document.getElementById('tk-price').value||'';const stop=document.getElementById('tk-stop').value||'';const target=document.getElementById('tk-target').value||'';const side=(document.getElementById('tk-side').value||'BUY').toUpperCase();const order_type=(document.getElementById('tk-type').value||'MARKET').toUpperCase();if(!symbol){msg.textContent='Enter symbol';msg.style.color='#fca5a5';return;}btn.disabled=true;msg.textContent='Placing…';try{const r=await fetch('/api/paper/order',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol,qty,price,stop,target,side,order_type})});const d=await r.json();if(d.ok){msg.textContent=d.message||'Filled';msg.style.color='#86efac';await loadBook();showView(side==='SELL'?'closed':'positions');}else{msg.textContent=d.error||d.message||'Failed';msg.style.color='#fca5a5';}}catch(e){msg.textContent=String(e);msg.style.color='#fca5a5';}btn.disabled=false;}
+async function paperOrder(){const msg=document.getElementById('buy-msg'),btn=document.getElementById('btn-buy');const symbol=(document.getElementById('tk-sym').value||'').trim().toUpperCase();const qty=document.getElementById('tk-qty').value||'50';const price=document.getElementById('tk-price').value||'';const stop=document.getElementById('tk-stop').value||'';const target=document.getElementById('tk-target').value||'';const side=(document.getElementById('tk-side').value||'BUY').toUpperCase();const order_type=(document.getElementById('tk-type').value||'MARKET').toUpperCase();const mode=(document.getElementById('tk-mode')||{}).value||'momentum';if(!symbol){msg.textContent='Enter symbol';msg.style.color='#fca5a5';return;}btn.disabled=true;msg.textContent='Placing…';try{const r=await fetch('/api/paper/order',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol,qty,price,stop,target,side,order_type,mode})});const d=await r.json();if(d.ok){msg.textContent=d.message||'Filled';msg.style.color='#86efac';await loadBook();showView(side==='SELL'?'closed':'positions');}else{msg.textContent=d.error||d.message||'Failed';msg.style.color='#fca5a5';}}catch(e){msg.textContent=String(e);msg.style.color='#fca5a5';}btn.disabled=false;}
 
 function inr(n){if(n==null||n==='')return '—';return '₹'+Number(n).toLocaleString('en-IN',{maximumFractionDigits:0});}
 function pct(n,d){if(n==null||n==='')return '—';const x=Number(n);return (x>=0?'+':'')+x.toFixed(d==null?1:d);}
@@ -688,7 +776,17 @@ async function runAuto(quiet){
     return d;
   }catch(e){if(!quiet)alert(e); return null;}
 }
-async function boot(){try{const r=await fetch('/api/health');const d=await r.json();if(d.build){const b=document.querySelector('.brand p');if(b)b.textContent=(d.parameter_set_id||'ash08-5cr-kelly-v1')+' · '+d.build;}if(d.paper_open!=null){const k=document.getElementById('kpi-open');if(k)k.textContent=d.paper_open;document.getElementById('ft-open').textContent='Open '+d.paper_open;}const ux=d.upstox||{};const pill=document.getElementById('upx-pill');if(pill)pill.textContent=ux.connected?'Upstox OK':(ux.token_set||d.upstox_token_set)?'Upstox token':'Upstox off';if(d.robot)paintRobot(d.robot);}catch(e){}try{const u=await fetch('/api/universe/core');const ud=await u.json();if(ud.count){const c=document.getElementById('kpi-core');if(c)c.textContent=ud.count;const u2=document.getElementById('uni-core');if(u2)u2.textContent=ud.count;}}catch(e){}await loadIndices();await loadAdvise();await loadBook();await loadRobot();
+function tagSt(st){const s=(st||'').toUpperCase();const cls=s==='PASS'||s==='SKIP'?'select':s==='FAIL'?'reject':'unknown';return '<span class="tag '+cls+'">'+(s||'—')+'</span>';}
+async function loadShadow(){try{const d=await (await fetch('/api/shadow')).json();document.getElementById('sh-n').textContent=d.n||0;document.getElementById('sh-open').textContent=d.open||0;document.getElementById('sh-t').textContent=d.target_hits||0;document.getElementById('sh-s').textContent=d.stop_hits||0;if(d.note)document.getElementById('sh-note').textContent=d.note;const rows=d.rows||[];const b=document.getElementById('sh-body');if(!rows.length)b.innerHTML='<tr><td colspan="7" class="muted" style="text-align:center;padding:16px">Empty — skipped BUY names appear after a robot tick</td></tr>';else b.innerHTML=rows.map(r=>'<tr><td><strong>'+r.ticker+'</strong></td><td>'+(r.score||'')+'</td><td class="muted">'+(r.skip_reason||'')+'</td><td>'+r.entry_px+'</td><td>'+r.last_px+'</td><td class="'+(r.pnl_pct>=0?'up':'dn')+'">'+(r.pnl_pct!=null?r.pnl_pct+'%':'—')+'</td><td>'+r.status+'</td></tr>').join('');}catch(e){}}
+async function loadRegister(){try{const d=await (await fetch('/api/register')).json();document.getElementById('reg-n').textContent=d.n||0;document.getElementById('reg-buy').textContent=d.buy_n||0;document.getElementById('reg-watch').textContent=d.watch_n||0;document.getElementById('reg-avoid').textContent=d.avoid_n||0;if(d.asof)document.getElementById('reg-asof').textContent=d.asof;const b=document.getElementById('reg-body');b.innerHTML=(d.rows||[]).map(r=>{const a=(r.action||'').toUpperCase();const cls=a==='BUY'||a==='SELECT'?'select':a==='WATCH'?'watch':'reject';return '<tr><td><strong>'+r.symbol+'</strong></td><td><span class="tag '+cls+'">'+a+'</span></td><td>'+(r.rank||'')+'</td><td>'+r.score+'</td><td>'+r.pass_n+'</td><td>'+r.fail_n+'</td><td class="muted">'+r.why+'</td></tr>';}).join('');}catch(e){}}
+async function loadTriggers(){try{const d=await (await fetch('/api/triggers')).json();document.getElementById('tr-body').innerHTML=(d.rows||[]).map(r=>'<tr><td><strong>'+r.symbol+'</strong></td><td>'+r.action+'</td><td>'+tagSt(r.cn018)+'</td><td>'+tagSt(r.cn022)+'</td><td>'+tagSt(r.cn021)+'</td><td>'+tagSt(r.t1)+'</td><td>'+tagSt(r.t2)+'</td><td>'+tagSt(r.t9)+'</td><td class="muted">'+r.why+'</td></tr>').join('');}catch(e){}}
+async function loadRisk(){try{const d=await (await fetch('/api/risk')).json();document.getElementById('rk-eq').textContent=inr(d.equity);document.getElementById('rk-peak').textContent=inr(d.peak_equity);document.getElementById('rk-dd').textContent=(d.drawdown_pct||0)+'%';document.getElementById('rk-consec').textContent=(d.consec_losses||0)+' / '+d.consec_max;document.getElementById('rk-dep').textContent=(d.deployed_pct||0)+'%';document.getElementById('rk-kill').textContent=d.kill_armed?'ARMED':'off';const g=d.governor||{};document.getElementById('rk-gov').textContent=g.level||'—';document.getElementById('rk-exp').textContent=(g.exposure_pct||'')+'%';document.getElementById('rk-cash').textContent=inr(d.cash)+' · floor '+inr(d.reserve_floor);document.getElementById('rk-bar').style.width=(g.exposure_pct||100)+'%';document.getElementById('rk-seg').innerHTML=(d.segments||[]).map(s=>'<tr><td>'+s.name+'</td><td>'+s.n+'</td></tr>').join('')||'<tr><td colspan="2" class="muted">None</td></tr>';}catch(e){}}
+async function loadAlerts(){try{const d=await (await fetch('/api/alerts')).json();document.getElementById('al-body').innerHTML=(d.rows||[]).map(j=>'<tr><td class="muted">'+(j.ts||'')+'</td><td>'+j.event+'</td><td><strong>'+(j.symbol||j.job||'')+'</strong></td><td class="muted">'+(j.reason||j.error||j.title||'')+'</td></tr>').join('')||'<tr><td colspan="4" class="muted">Quiet</td></tr>';document.getElementById('al-skips').innerHTML=(d.skips||[]).map(s=>'<tr><td>'+s.symbol+'</td><td class="muted">'+s.reason+'</td></tr>').join('')||'<tr><td colspan="2" class="muted">None</td></tr>';}catch(e){}}
+async function loadEngine(){try{const d=await (await fetch('/api/engine')).json();document.getElementById('en-open').textContent=d.open_n;document.getElementById('en-pend').textContent=d.pending_n;document.getElementById('en-sh').textContent=d.shadow_n;document.getElementById('en-j').textContent=d.journal_n;const sch=d.schedule||{};document.getElementById('en-now').textContent=sch.now_ist||'';document.getElementById('en-jobs').innerHTML=(sch.jobs||[]).map(j=>'<tr><td>'+j.title+'</td><td>'+j.id+'</td><td>'+(j.ran_today?'done':(j.due?'DUE':'waiting'))+'</td></tr>').join('');document.getElementById('en-robot').textContent=JSON.stringify(d.robot||{},null,2);const cp=document.getElementById('clock-pill');if(cp) cp.textContent='Clock '+(sch.now_ist||'').slice(11,16);}catch(e){}}
+async function loadStrategy(){try{const d=await (await fetch('/api/strategy')).json();document.getElementById('st-body').innerHTML=(d.rows||[]).map(r=>'<tr><td>'+r.id+'</td><td>'+r.item+'</td><td><strong>'+r.value+'</strong></td><td class="muted">'+r.note+'</td></tr>').join('');const hz=document.getElementById('hz-cards');if(hz) hz.innerHTML=(d.horizons||[]).map(h=>'<div class="hz"><strong>'+h.label+'</strong><span>'+h.hold+'</span><div class="muted" style="margin-top:6px">'+h.rails+'</div></div>').join('');}catch(e){}}
+async function loadReports(){try{const d=await (await fetch('/api/reports')).json();const money=r=>'<tr><td>'+(r.reason||r.symbol||r.day)+'</td><td>'+r.n+'</td><td class="'+(r.pnl>=0?'up':'dn')+'">'+r.pnl+'</td></tr>';document.getElementById('rp-reason').innerHTML=(d.by_reason||[]).map(money).join('')||'<tr><td colspan="3" class="muted">None</td></tr>';document.getElementById('rp-sym').innerHTML=(d.by_symbol||[]).map(money).join('')||'<tr><td colspan="3" class="muted">None</td></tr>';document.getElementById('rp-day').innerHTML=(d.by_day||[]).map(money).join('')||'<tr><td colspan="3" class="muted">None</td></tr>';}catch(e){}}
+async function loadSettings(){try{const d=await (await fetch('/api/settings')).json();document.getElementById('set-build').textContent=d.build+' · '+d.parameter_set_id;document.getElementById('set-upx').textContent=(d.upstox&&d.upstox.detail)||'—';document.getElementById('set-robot').textContent=d.robot_armed?'armed':'off';document.getElementById('set-clock').textContent=(d.clock&&d.clock.now_ist)||'—';document.getElementById('set-locks').innerHTML=(d.locks||[]).map(r=>'<tr><td>'+r.item+'</td><td>'+r.value+'</td></tr>').join('');}catch(e){}}
+async function boot(){try{const r=await fetch('/api/health');const d=await r.json();if(d.build){const b=document.querySelector('.brand p');if(b)b.textContent=(d.parameter_set_id||'ash08-5cr-kelly-v1')+' · '+d.build;}if(d.paper_open!=null){const k=document.getElementById('kpi-open');if(k)k.textContent=d.paper_open;document.getElementById('ft-open').textContent='Open '+d.paper_open;}const ux=d.upstox||{};const pill=document.getElementById('upx-pill');if(pill)pill.textContent=ux.connected?'Upstox OK':(ux.token_set||d.upstox_token_set)?'Upstox token':'Upstox off';if(d.robot)paintRobot(d.robot);}catch(e){}try{const u=await fetch('/api/universe/core');const ud=await u.json();if(ud.count){const c=document.getElementById('kpi-core');if(c)c.textContent=ud.count;const u2=document.getElementById('uni-core');if(u2)u2.textContent=ud.count;}}catch(e){}await loadIndices();await loadAdvise();await loadBook();await loadRobot();await loadEngine();
 try{const b=await (await fetch('/api/paper/book')).json(); if(!b.open_count) await runAuto(true);}catch(e){}
 }
 setInterval(loadRobot, 15000);

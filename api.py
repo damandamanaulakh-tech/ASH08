@@ -18,7 +18,7 @@ LOG = logging.getLogger("ash08.api")
 DESK = ROOT / "desk"
 PORT = int(os.environ.get("PORT", "10000"))
 DATA_DIR = Path("ash08_data")
-BUILD = "2026-09-10-desk"
+BUILD = "2026-09-10-full-desk"
 REF_LTP = {
     "TCS": 3840.0, "HDFCBANK": 1690.0, "RELIANCE": 2950.0, "INFY": 1850.0,
     "ICICIBANK": 1180.0, "SBIN": 820.0, "ITC": 450.0, "MTARTECH": 1850.0,
@@ -151,14 +151,27 @@ def _robot_status():
         return {"ok": False, "error": str(e), "armed": False}
 
 
+def _clock_pulse():
+    try:
+        from ash08.clock import pulse
+        eng = get_engine()
+        if eng:
+            return pulse(eng, quotes_pack_for)
+    except Exception:
+        LOG.exception("clock pulse")
+    return {}
+
+
 def _robot_loop():
     try:
+        _clock_pulse()
         run_robot_tick(force_buy=True)
     except Exception:
         LOG.exception("robot first tick")
     while True:
         time.sleep(45)
         try:
+            _clock_pulse()
             run_robot_tick(force_buy=True)
         except Exception:
             LOG.exception("robot loop")
@@ -310,6 +323,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.api_paper_sell(body)
         if path in ("/api/paper/close-all", "/api/paper/close_all"):
             return self.api_paper_close_all(body)
+        if path in ("/api/paper/notes", "/api/positions/notes"):
+            return self.api_paper_notes(body)
         if path == "/api/pnl/tick":
             return self.api_pnl_tick()
         return self.json(404, {"ok": False, "error": "not found"})
@@ -479,6 +494,29 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/api/gaps", "/api/infinity"):
             from ash08.infinity_gaps import payload as gaps
             return self.json(200, gaps())
+        if path == "/api/reports":
+            return self.api_ops("reports")
+        if path == "/api/risk":
+            return self.api_ops("risk")
+        if path == "/api/alerts":
+            return self.api_ops("alerts")
+        if path == "/api/settings":
+            return self.api_ops("settings")
+        if path in ("/api/engine", "/api/clock"):
+            return self.api_ops("engine")
+        if path == "/api/strategy":
+            from ash08.ops import strategy
+            return self.json(200, strategy())
+        if path == "/api/register":
+            return self.api_ops("register")
+        if path == "/api/shadow":
+            return self.api_ops("shadow")
+        if path == "/api/schedule":
+            from ash08.clock import schedule_payload
+            eng = get_engine()
+            return self.json(200, schedule_payload(getattr(eng, "clock_last", None) or {}))
+        if path == "/api/triggers":
+            return self.api_ops("triggers")
         return self.serve_static(path)
 
     def api_paper_book(self):
@@ -635,6 +673,7 @@ class Handler(BaseHTTPRequestHandler):
                 symbol=symbol, side="BUY", order_type="MARKET", qty=qty,
                 fill_price=px, stop=stop, target=target, source="manual",
                 why=body.get("why"),
+                mode=body.get("mode") or "momentum",
             )
             if hasattr(eng, "book_payload"):
                 eng.book_payload(live_prices=quotes_for_symbols([symbol]))
@@ -722,6 +761,50 @@ class Handler(BaseHTTPRequestHandler):
             "governor": eng.governor.to_dict() if eng and hasattr(eng.governor, "to_dict") else {},
             "skipped": (robot.get("skipped_detail") or [])[:20],
         })
+
+    def api_paper_notes(self, body):
+        eng = get_engine()
+        if not eng:
+            return self.json(500, {"ok": False, "error": "paper engine missing"})
+        symbol = str(body.get("symbol") or "").strip().upper()
+        if not symbol:
+            return self.json(400, {"ok": False, "error": "symbol required"})
+        ok = eng.set_notes(symbol, body.get("notes") or "", body.get("tags"))
+        if not ok:
+            return self.json(404, {"ok": False, "error": "not_open"})
+        return self.json(200, {"ok": True, "symbol": symbol})
+
+    def api_ops(self, kind):
+        from ash08 import ops
+        eng = get_engine()
+        if not eng and kind not in ("strategy",):
+            return self.json(500, {"ok": False, "error": "paper engine missing"})
+        robot = _robot_status()
+        ux = upstox_status()
+        advise = {}
+        if kind in ("register", "triggers"):
+            try:
+                from ash08.advisory import payload as advise_fn
+                advise = advise_fn()
+            except Exception as e:
+                advise = {"ok": False, "error": str(e)}
+        if kind == "reports":
+            return self.json(200, ops.reports(eng))
+        if kind == "risk":
+            return self.json(200, ops.risk(eng))
+        if kind == "alerts":
+            return self.json(200, ops.alerts(eng, robot))
+        if kind == "settings":
+            return self.json(200, ops.settings(ux, robot, eng, BUILD))
+        if kind == "engine":
+            return self.json(200, ops.engine_status(eng, robot, ux))
+        if kind == "register":
+            return self.json(200, ops.register(advise))
+        if kind == "shadow":
+            return self.json(200, ops.shadow_payload(eng))
+        if kind == "triggers":
+            return self.json(200, ops.triggers(advise))
+        return self.json(404, {"ok": False, "error": "unknown ops"})
 
     def serve_static(self, path):
         candidate = DESK / "ASH08_Desk_Dashboard.html" if path in ("/", "") else (DESK / path.lstrip("/")).resolve()
