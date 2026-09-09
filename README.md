@@ -3,7 +3,9 @@
 ASH08 is a paper-only NSE desk. Own repo. Not AshStocks. Not AM07.
 Render deploys **this** repo (`damandamanaulakh-tech/ASH08`).
 
-**Front is Today's Advice.** The robot **buys those BUY names itself** and **sells itself** on −3% stop / +6% target / 15d hold. Paper only. Live Upstox LTP or skip — no invented fill.
+**Front is the desk.** Today's Advice still drives the robot. The robot **buys those BUY names itself** and **sells itself** on −3% stop / +6% target / 15d hold. You can also **BUY, SELL, rest a day-limit, and close-all**. Closed trades are a first-class book (hold days, capital, reason, win rate). Paper only. Live last or skip — no invented fill.
+
+ASH08 numbers stay locked: ₹5 Cr, ½-Kelly, SELECT 68, −3 / +6 / 15d. The desk loop (ticket, open, closed, why, journal) is what AM07 already had.
 
 ## What the robot does
 
@@ -47,12 +49,16 @@ AM07 was the pattern (robot picker + journal). ASH08 numbers stay: ₹5 Cr, Kell
 
 | Path | What |
 |------|------|
-| `/` | Today's Advice + robot status |
+| `/` | Dashboard: indices, KPIs, BUY cards with why, open, closed stats, journal |
 | `/api/advise` | BUY / WATCH / AVOID |
+| `/api/desk` | One payload: advise + book + robot + index tiles |
 | `/api/robot/tick` | Run one paper cycle (`?force=1` ignores session window) |
 | `/api/robot/status` | Last tick |
-| `/api/paper/book` | Cash / equity / opens / closed |
-| `/api/health` | `build=2026-09-09-robot` |
+| `/api/paper/book` | Cash / equity / opens / **all** closed + win-rate |
+| `/api/paper/order` | Two-sided ticket: BUY / SELL, MARKET / LIMIT |
+| `/api/paper/sell` | Owner SELL → Closed Trades (live last or typed price) |
+| `/api/paper/close-all` | Sell every open at live last; no quote stays open |
+| `/api/health` | `build=2026-09-10-desk` |
 
 ## Run
 

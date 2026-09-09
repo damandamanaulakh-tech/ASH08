@@ -75,6 +75,7 @@ def dump_state(engine) -> Dict[str, Any]:
         "governor": gov,
         "orders": list(engine.orders),
         "positions": list(engine.positions),
+        "pending_orders": list(getattr(engine, "pending_orders", []) or []),
         "journal": list(getattr(engine, "journal", []) or [])[-300:],
         "cash": round(float(engine.cash), 2),
         "book_value": float(engine.book_value),
@@ -84,6 +85,7 @@ def dump_state(engine) -> Dict[str, Any]:
 def apply_state(engine, st: dict) -> None:
     engine.orders = st.get("orders") or []
     engine.positions = st.get("positions") or []
+    engine.pending_orders = list(st.get("pending_orders") or [])
     engine.journal = list(st.get("journal") or [])[-300:]
     if st.get("cash") is not None:
         try:

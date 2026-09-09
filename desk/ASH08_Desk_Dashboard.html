@@ -64,7 +64,16 @@ table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:9px 10px;
 .chip-ok{background:#052e16;color:#86efac;border:1px solid #166534;border-radius:999px;padding:3px 8px;font-size:10px;font-weight:700}
 .chip-hold{background:#3f1d0a;color:#fdba74;border:1px solid #9a3412;border-radius:999px;padding:3px 8px;font-size:10px;font-weight:700}
 .chip-miss{background:#1e293b;color:#cbd5e1;border:1px solid var(--line);border-radius:999px;padding:3px 8px;font-size:10px;font-weight:700}
+.steps{display:flex;flex-wrap:wrap;gap:4px}
+.step{font-size:9px;font-weight:700;padding:2px 6px;border-radius:6px;border:1px solid var(--line);color:var(--muted)}
+.step.pass{background:#052e16;border-color:#166534;color:#86efac}
+.step.fail{background:#450a0a;border-color:#7f1d1d;color:#fca5a5}
+.kpis8{display:grid;grid-template-columns:repeat(8,1fr);gap:8px;margin-bottom:12px}
+.sell{flex:1;border:0;border-radius:8px;padding:11px;font-weight:700;cursor:pointer;font-size:12px;background:#b91c1c;color:#fff}
+.stat-row{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:12px}
+.entry-mark{color:#fbbf24;font-size:10px;text-transform:uppercase}
 
+@media(max-width:1200px){.kpis8,.stat-row{grid-template-columns:1fr 1fr 1fr}}
 @media(max-width:1100px){.kpis6{grid-template-columns:1fr 1fr 1fr}}
 
 @media(max-width:1100px){.idx-row,.grid3,.horizons{grid-template-columns:1fr 1fr}.layout{grid-template-columns:1fr}nav{position:relative;top:0;height:auto;display:flex;flex-wrap:wrap}nav button{width:auto}}
@@ -72,7 +81,7 @@ table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:9px 10px;
 </head>
 <body>
 <div class="top">
-<div class="brand"><div class="logo">A8</div><div><h1>ASH08 Sourceborn</h1><p class="build">ash08-5cr-kelly-v1 · Today's Advice · tape from last Yahoo session</p></div></div>
+<div class="brand"><div class="logo">A8</div><div><h1>ASH08 Sourceborn</h1><p class="build">ash08-5cr-kelly-v1 · ½-Kelly · ₹5 Cr · −3 / +6 / 15d</p></div></div>
 <div style="display:flex;gap:8px;flex-wrap:wrap">
 <span class="pill on">PAPER</span>
 <span class="pill on" id="robot-pill">ROBOT</span>
@@ -87,13 +96,14 @@ table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:9px 10px;
 </div>
 <div class="layout">
 <nav>
-<div class="sec">Advice</div>
-<button class="active" data-view="home">Today's Advice</button>
+<div class="sec">Desk</div>
+<button class="active" data-view="home">Dashboard</button>
 <button data-view="scanner">Scanner</button>
-<button data-view="detail">Stock Detail</button>
-<div class="sec">Trade</div>
-<button data-view="ticket">Paper Ticket</button>
-<button data-view="positions">Trade Book</button>
+<button data-view="detail">Why this stock</button>
+<div class="sec">Book</div>
+<button data-view="ticket">Buy / Sell ticket</button>
+<button data-view="positions">Open positions</button>
+<button data-view="closed">Closed trades</button>
 <button data-view="watchlist">Watchlist</button>
 <div class="sec">Risk</div>
 <button data-view="governor">Risk Governor</button>
@@ -108,34 +118,54 @@ table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:9px 10px;
 <main>
 <section class="view active" id="view-home">
 <div class="banner">
-<div><strong>Paper robot is on.</strong> Buys today's BUY names whenever a live last exists — including after hours catch-up. Sells itself on −3% / +6% / 15d. Book survives restart. Never a made-up mark.</div>
+<div><strong>Paper desk.</strong> Robot auto-buys today's BUY at live last (½-Kelly, ₹5 Cr, −3 / +6 / 15d). You can also BUY, SELL, or rest a limit. Closed trades are a full book, not a last-30 strip. No invented fill.</div>
 <div class="muted">Tape as-of <b id="adv-asof">—</b> · FII as-of <b id="adv-fii-asof">—</b> · robot <b id="robot-line">waiting first tick</b></div>
 </div>
-<div class="kpis6">
-<div class="kpi"><span>BUY</span><strong id="adv-buy-n" class="up">—</strong></div>
-<div class="kpi"><span>WATCH</span><strong id="adv-watch-n">—</strong></div>
-<div class="kpi"><span>Breadth</span><strong id="adv-breadth">—</strong></div>
-<div class="kpi"><span>FII net</span><strong id="adv-fii">—</strong></div>
+<div class="idx-row">
+<div class="idx"><div class="lab">NIFTY 50</div><div class="val" id="idx-NIFTY50">—</div><div class="muted" id="idx-NIFTY50-chg">Upstox or failed</div></div>
+<div class="idx"><div class="lab">SENSEX</div><div class="val" id="idx-SENSEX">—</div><div class="muted" id="idx-SENSEX-chg">Upstox or failed</div></div>
+<div class="idx"><div class="lab">BANK NIFTY</div><div class="val" id="idx-BANKNIFTY">—</div><div class="muted" id="idx-BANKNIFTY-chg">Upstox or failed</div></div>
+<div class="idx"><div class="lab">INDIA VIX</div><div class="val" id="idx-INDIAVIX">—</div><div class="muted" id="idx-INDIAVIX-chg">Upstox or failed</div></div>
+<div class="idx"><div class="lab">Regime</div><div class="val" id="home-regime">—</div><div class="muted" id="home-breadth2">breadth —</div></div>
+</div>
+<div class="kpis8">
 <div class="kpi"><span>Equity</span><strong id="home-eq">₹5,00,00,000</strong></div>
 <div class="kpi"><span>Cash</span><strong id="home-cash">₹5,00,00,000</strong></div>
+<div class="kpi"><span>Open</span><strong id="home-open-n">0</strong></div>
+<div class="kpi"><span>Unrealized</span><strong id="home-upnl">—</strong></div>
+<div class="kpi"><span>Realized</span><strong id="home-rpnl">—</strong></div>
+<div class="kpi"><span>Win rate</span><strong id="home-win">—</strong></div>
+<div class="kpi"><span>BUY names</span><strong id="adv-buy-n" class="up">—</strong></div>
+<div class="kpi"><span>WATCH</span><strong id="adv-watch-n">—</strong></div>
+</div>
+<div class="kpis6" style="margin-top:-4px">
+<div class="kpi"><span>Breadth</span><strong id="adv-breadth">—</strong></div>
+<div class="kpi"><span>FII net</span><strong id="adv-fii">—</strong></div>
+<div class="kpi"><span>Deployed</span><strong id="home-deployed">—</strong></div>
+<div class="kpi"><span>Closed</span><strong id="home-closed-n">0</strong></div>
+<div class="kpi"><span>LTP</span><strong id="home-ltpsrc">—</strong></div>
+<div class="kpi"><span>Skipped</span><strong id="home-skip-n">0</strong></div>
 </div>
 <div class="chips" id="adv-chips"></div>
 <div id="adv-cards" class="advice-grid"><div class="muted">Loading advice…</div></div>
 <div class="grid2">
-<div class="panel"><div class="panel-h"><h3>WATCH</h3><span class="muted">Chitty / rank / quality — not BUY</span></div>
+<div class="panel"><div class="panel-h"><h3>WATCH — why not bought</h3><span class="muted">gate that blocked SELECT</span></div>
 <table><thead><tr><th>Rank</th><th>Symbol</th><th>Score</th><th>Why</th></tr></thead>
 <tbody id="adv-watch"><tr><td colspan="4" class="muted" style="text-align:center;padding:16px">Loading…</td></tr></tbody></table></div>
-<div class="panel"><div class="panel-h"><h3>Open book</h3><button class="btn" onclick="showView('positions')">Trade book</button></div>
+<div>
+<div class="panel"><div class="panel-h"><h3>Open book</h3><button class="btn" onclick="showView('positions')">Open positions</button></div>
 <table><thead><tr><th>Symbol</th><th>Qty</th><th>Entry</th><th>LTP</th><th>P&L</th></tr></thead>
-<tbody id="home-pos"><tr><td colspan="5" class="muted" style="text-align:center;padding:16px">Catch-up: robot fills when a live last is present</td></tr></tbody></table>
-<div class="panel" style="margin-top:12px"><div class="panel-h"><h3>Journal</h3><span class="muted">append-only</span></div>
+<tbody id="home-pos"><tr><td colspan="5" class="muted" style="text-align:center;padding:16px">Catch-up: robot fills when a live last is present</td></tr></tbody></table></div>
+<div class="panel"><div class="panel-h"><h3>Skip reasons</h3><span class="muted" id="home-skip-label">last robot tick</span></div>
+<table><thead><tr><th>Name</th><th>Why skipped</th></tr></thead>
+<tbody id="home-skips"><tr><td colspan="2" class="muted" style="text-align:center;padding:12px">None</td></tr></tbody></table></div>
+<div class="panel"><div class="panel-h"><h3>Journal</h3><span class="muted">BUY and SELL</span></div>
 <table><thead><tr><th>When</th><th>Event</th><th>Name</th><th>Detail</th></tr></thead>
-<tbody id="home-journal"><tr><td colspan="4" class="muted" style="text-align:center;padding:16px">Waiting first fill</td></tr></tbody></table>
-<div class="card" style="border:0;border-radius:0">
-<div class="row"><span class="muted">Stop / Target / Hold</span><strong>-3% / +6% / 15d</strong></div>
-<div class="row"><span class="muted">Size</span><strong>½-Kelly · FII throttle</strong></div>
-<div class="row"><span class="muted">Robot</span><strong>auto-buy BUY · auto-sell −3/+6/15d</strong></div>
-<div class="row"><span class="muted">LTP source</span><strong id="home-ltpsrc">—</strong></div>
+<tbody id="home-journal"><tr><td colspan="4" class="muted" style="text-align:center;padding:16px">Waiting first fill</td></tr></tbody></table></div>
+<div class="card">
+<div class="row"><span class="muted">Stop / Target / Hold</span><strong>−3% / +6% / 15d</strong></div>
+<div class="row"><span class="muted">Size</span><strong>½-Kelly · FII throttle · 5% cash hold</strong></div>
+<div class="row"><span class="muted">Robot</span><strong>auto-buy BUY · auto-sell rails · you can SELL too</strong></div>
 <div class="row"><span class="muted">Max open</span><strong>500</strong></div>
 </div>
 </div>
@@ -188,16 +218,18 @@ table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:9px 10px;
 <div class="btn-row"><button class="buy" onclick="showView('ticket')">Paper ticket</button><button class="ghost" onclick="showView('scanner')">Back</button></div></div>
 </div></section>
 <section class="view" id="view-ticket">
-<div class="card" style="max-width:560px"><h4>Paper Ticket</h4>
-<p class="muted">SELECT also auto-buys. Blank = stop -3% / target +6%.</p>
+<div class="card" style="max-width:640px"><h4>Paper ticket</h4>
+<p class="muted">Blank stop/target = −3% / +6%. Blank price = live last. Limit BUY rests until last ≤ limit. SELL books to Closed Trades. Will not invent a fill.</p>
 <div class="form-grid">
 <div><label>Symbol</label><input id="tk-sym" placeholder="TCS"/></div>
+<div><label>Side</label><select id="tk-side" style="width:100%;background:#0b1220;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:9px"><option>BUY</option><option>SELL</option></select></div>
+<div><label>Type</label><select id="tk-type" style="width:100%;background:#0b1220;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:9px"><option>MARKET</option><option>LIMIT</option></select></div>
 <div><label>Qty</label><input id="tk-qty" type="number" value="50"/></div>
-<div><label>Price</label><input id="tk-price" type="number" step="0.05" placeholder="auto"/></div>
-<div><label>Stop</label><input id="tk-stop" type="number" step="0.05" placeholder="auto -3%"/></div>
+<div><label>Price / Limit</label><input id="tk-price" type="number" step="0.05" placeholder="auto live last"/></div>
+<div><label>Stop</label><input id="tk-stop" type="number" step="0.05" placeholder="auto −3%"/></div>
 <div><label>Target</label><input id="tk-target" type="number" step="0.05" placeholder="auto +6%"/></div>
 </div>
-<div class="btn-row"><button class="buy" id="btn-buy" onclick="paperBuy()">PAPER BUY</button><button class="ghost" onclick="showView('positions')">Trade Book</button></div>
+<div class="btn-row"><button class="buy" id="btn-buy" onclick="paperOrder()">Place paper order</button><button class="sell" onclick="document.getElementById('tk-side').value='SELL';paperOrder()">SELL</button><button class="ghost" onclick="showView('positions')">Open book</button></div>
 <div id="buy-msg" class="muted"></div></div>
 </section>
 <section class="view" id="view-positions">
@@ -217,17 +249,30 @@ table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:9px 10px;
 <div class="row"><span class="muted">Cash</span><strong id="plan-cash">₹5,00,00,000</strong></div>
 <div class="row"><span class="muted">Source</span><strong>auto_select · 0.10% cost</strong></div></div>
 </div>
-<p class="muted" style="margin:0 0 10px;font-size:12px"><b>Open</b> = live holdings · <b>Order history FILLED</b> = buy tickets only</p>
+<p class="muted" style="margin:0 0 10px;font-size:12px"><b>Open</b> = live holdings · LTP marked <span class="entry-mark">ENTRY</span> is not the market · SELL books to Closed Trades · rails still −3 / +6 / 15d</p>
 <div class="panel"><div class="panel-h"><h3>Open positions</h3>
-<div style="display:flex;gap:8px"><button class="btn" onclick="loadBook()">Refresh</button><button class="btn green" onclick="runAuto()">Run robot now</button></div></div>
-<table><thead><tr><th>Symbol</th><th>Qty</th><th>Entry</th><th>LTP</th><th>P&L</th><th>Stop</th><th>Target</th><th>Left</th><th>Status</th></tr></thead>
+<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" onclick="loadBook()">Refresh</button><button class="btn green" onclick="runAuto()">Run robot now</button><button class="btn" style="border-color:#7f1d1d;color:#fca5a5" onclick="closeAll()">Close all at live last</button></div></div>
+<table><thead><tr><th>Symbol</th><th>Qty</th><th>Entry</th><th>LTP</th><th>P&L</th><th>To target</th><th>To stop</th><th>Left</th><th></th></tr></thead>
 <tbody id="pos-body"><tr><td colspan="9" class="muted" style="text-align:center;padding:18px">No open positions</td></tr></tbody></table></div>
-<div class="panel"><div class="panel-h"><h3>Order history</h3><span class="muted" style="font-size:11px">FILLED = completed buy ticket</span></div>
+<div class="panel"><div class="panel-h"><h3>Resting limits</h3><span class="muted">day BUY · fills if last ≤ limit</span></div>
+<table><thead><tr><th>Time</th><th>Symbol</th><th>Limit</th><th>Qty</th><th>Status</th></tr></thead>
+<tbody id="pend-body"><tr><td colspan="5" class="muted" style="text-align:center;padding:14px">None</td></tr></tbody></table></div>
+<div class="panel"><div class="panel-h"><h3>Order history</h3><span class="muted">BUY and SELL fills</span></div>
 <table><thead><tr><th>Time</th><th>Symbol</th><th>Side</th><th>Qty</th><th>Fill</th><th>Status</th></tr></thead>
 <tbody id="ord-body"><tr><td colspan="6" class="muted" style="text-align:center;padding:18px">No orders</td></tr></tbody></table></div>
-<div class="panel"><div class="panel-h"><h3>Closed / exits</h3><span class="muted">entry value · exit value · realized after 0.10%</span></div>
-<table><thead><tr><th>Symbol</th><th>Qty</th><th>Entry</th><th>Exit</th><th>Entry ₹</th><th>Exit ₹</th><th>P&L</th><th>Return</th><th>Reason</th></tr></thead>
-<tbody id="closed-body"><tr><td colspan="9" class="muted" style="text-align:center;padding:18px">No closed</td></tr></tbody></table></div>
+</section>
+<section class="view" id="view-closed">
+<div class="stat-row">
+<div class="kpi"><span>Trades</span><strong id="cl-total">0</strong></div>
+<div class="kpi"><span>Win rate</span><strong id="cl-win">—</strong></div>
+<div class="kpi"><span>Wins / Losses</span><strong id="cl-wl">—</strong></div>
+<div class="kpi"><span>Gross profit</span><strong id="cl-gp" class="up">—</strong></div>
+<div class="kpi"><span>Gross loss</span><strong id="cl-gl" class="dn">—</strong></div>
+<div class="kpi"><span>Net P&L</span><strong id="cl-net">—</strong></div>
+</div>
+<div class="panel"><div class="panel-h"><h3>Closed trades</h3><span class="muted">full book · costs 0.10% each side · reason on every row</span></div>
+<table><thead><tr><th>Symbol</th><th>Qty</th><th>Entry</th><th>Exit</th><th>Hold</th><th>Entry ₹</th><th>Exit ₹</th><th>P&L</th><th>Return</th><th>Reason</th></tr></thead>
+<tbody id="closed-body"><tr><td colspan="10" class="muted" style="text-align:center;padding:18px">No closed trades yet</td></tr></tbody></table></div>
 </section>
 <section class="view" id="view-horizons">
 <div class="horizons">
@@ -317,7 +362,7 @@ table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:9px 10px;
 </main></div>
 <div class="footer-bar"><span class="build">ASH08 paper robot</span><span id="ft-core">N200 191</span><span id="ft-eq">Eq ₹5.00 Cr</span><span id="ft-cash">Cash ₹5.00 Cr</span><span id="ft-open">Open 0</span><span id="ft-robot">Robot —</span></div>
 <script>
-function showView(id){document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));const v=document.getElementById('view-'+id);if(v)v.classList.add('active');const b=document.querySelector('nav button[data-view="'+id+'"]');if(b)b.classList.add('active');if(id==='positions'||id==='home'){loadBook();if(id==='home')loadAdvise();}if(id==='watchlist')loadWatch();if(id==='segments')loadSegments();if(id==='history')loadHistory();if(id==='factors')loadFactors();if(id==='piano'){loadPianoSummary();selectNote(document.querySelector('.note.active')||document.querySelector('.note'), (document.querySelector('.note.active')||document.querySelector('.note')).dataset.param);}}
+function showView(id){document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));const v=document.getElementById('view-'+id);if(v)v.classList.add('active');const b=document.querySelector('nav button[data-view="'+id+'"]');if(b)b.classList.add('active');if(id==='positions'||id==='home'||id==='closed'){loadBook();if(id==='home'){loadAdvise();loadIndices();loadRobot();}}if(id==='watchlist')loadWatch();if(id==='segments')loadSegments();if(id==='history')loadHistory();if(id==='factors')loadFactors();if(id==='piano'){loadPianoSummary();selectNote(document.querySelector('.note.active')||document.querySelector('.note'), (document.querySelector('.note.active')||document.querySelector('.note')).dataset.param);}}
 document.querySelectorAll('nav button').forEach(btn=>btn.addEventListener('click',()=>showView(btn.dataset.view)));
 function fillPianoList(el, rows, emptyScan){
   if(!rows||!rows.length){el.innerHTML='<div class="muted">'+(emptyScan?'Empty scan':'None')+'</div>';return;}
@@ -416,6 +461,8 @@ async function loadAdvise(){
     const bn=document.getElementById('adv-buy-n'); if(bn) bn.textContent=d.buy_n!=null?d.buy_n:'—';
     const wn=document.getElementById('adv-watch-n'); if(wn) wn.textContent=d.watch_n!=null?d.watch_n:'—';
     const br=document.getElementById('adv-breadth'); if(br) br.textContent=(d.market&&d.market.breadth_pct!=null)?(d.market.breadth_pct+'%'):'—';
+    const rg=document.getElementById('home-regime'); if(rg) rg.textContent=(d.market&&d.market.trend!=null)?d.market.trend:'—';
+    const b2=document.getElementById('home-breadth2'); if(b2) b2.textContent=(d.market&&d.market.breadth_pct!=null)?('breadth '+d.market.breadth_pct+'%'):'breadth —';
     const fi=document.getElementById('adv-fii'); if(fi){
       const n=d.fii&&d.fii.fii_net_cr;
       fi.textContent=n==null?'—':((n>=0?'+':'')+Number(n).toFixed(0)+' Cr');
@@ -439,6 +486,11 @@ async function loadAdvise(){
     if(!host)return;
     if(!buys.length){host.innerHTML='<div class="muted">No BUY after T1/T2/Chitty/M6. See WATCH.</div>';}
     else host.innerHTML=buys.map(r=>{
+      const steps=(r.steps||[]).slice(0,12).map(s=>{
+        const st=(s.status||'').toUpperCase();
+        const cls=st==='PASS'||st==='SKIP'?'pass':(st==='FAIL'?'fail':'');
+        return '<span class="step '+cls+'" title="'+(s.detail||'')+'">'+(s.id||'')+' '+(st||'')+'</span>';
+      }).join('');
       return '<div class="advice">'
         +'<h3>'+r.symbol+' <span class="tag select">BUY</span></h3>'
         +'<div class="px">'+inr(r.close)+' <span class="muted" style="font-size:11px">tape '+r.asof+'</span></div>'
@@ -448,10 +500,11 @@ async function loadAdvise(){
         +'<div><span>Stop −3%</span><strong>'+r.stop+'</strong></div>'
         +'<div><span>Target +6%</span><strong>'+r.target+'</strong></div>'
         +'<div><span>Hold</span><strong>'+r.hold_days+'d</strong></div>'
-        +'<div><span>6m / ATR</span><strong>'+(r.mom6_pct!=null?r.mom6_pct+'%':'—')+' · '+(r.atr_pct!=null?r.atr_pct.toFixed(1)+'%':'—')+'</strong></div>'
+        +'<div><span>6m / ATR</span><strong>'+(r.mom6_pct!=null?r.mom6_pct+'%':'—')+' · '+(r.atr_pct!=null?Number(r.atr_pct).toFixed(1)+'%':'—')+'</strong></div>'
         +'</div>'
+        +'<div class="steps">'+steps+'</div>'
         +'<div class="why">'+r.why+'</div>'
-        +'<button class="buy" onclick="ticketFromAdvice(\''+r.symbol+'\','+r.close+','+r.qty+')">Paper ticket</button>'
+        +'<div class="btn-row"><button class="buy" onclick="buyNow(\''+r.symbol+'\','+r.qty+')">Buy now</button><button class="ghost" onclick="ticketFromAdvice(\''+r.symbol+'\','+r.close+','+r.qty+')">Ticket</button></div>'
         +'</div>';
     }).join('');
     const wb=document.getElementById('adv-watch');
@@ -467,18 +520,47 @@ async function loadAdvise(){
 }
 function ticketFromAdvice(sym, px, qty){
   document.getElementById('tk-sym').value=sym;
-  if(px) document.getElementById('tk-price').value=px;
+  document.getElementById('tk-side').value='BUY';
+  document.getElementById('tk-type').value='MARKET';
+  if(px) document.getElementById('tk-price').value='';
   if(qty) document.getElementById('tk-qty').value=qty;
   showView('ticket');
   const msg=document.getElementById('buy-msg');
-  if(msg){msg.textContent='Tape close is a reference. Paper fill still needs live Upstox LTP — will not invent a fill.';msg.style.color='#fbbf24';}
+  if(msg){msg.textContent='Tape close is a reference. Paper fill uses live last — will not invent a fill.';msg.style.color='#fbbf24';}
+}
+async function buyNow(sym, qty){
+  try{
+    const r=await fetch('/api/paper/order',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:sym,side:'BUY',order_type:'MARKET',qty:qty||50})});
+    const d=await r.json();
+    if(d.ok){await loadBook(); showView('positions');}
+    else alert(d.error||d.message||'Buy blocked');
+  }catch(e){alert(e);}
+}
+async function sellOne(sym){
+  if(!confirm('Sell '+sym+' at live last into Closed Trades?')) return;
+  try{
+    const r=await fetch('/api/paper/sell',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:sym})});
+    const d=await r.json();
+    if(!d.ok) alert(d.error||'Sell blocked');
+    await loadBook();
+  }catch(e){alert(e);}
+}
+async function closeAll(){
+  if(!confirm('Close ALL open names at live last? Names without a quote stay open.')) return;
+  try{
+    const r=await fetch('/api/paper/close-all',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    const d=await r.json();
+    alert(d.message||('Closed '+(d.closed||0)));
+    await loadBook();
+  }catch(e){alert(e);}
 }
 async function loadScan(){try{const r=await fetch('/api/scan/latest');const d=await r.json();renderRows(d.rows||[],d.select_count);}catch(e){}}
 async function loadWatch(){try{const r=await fetch('/api/scan/latest');const d=await r.json();const rows=(d.rows||[]).filter(x=>{const z=(x.decision||'').toUpperCase();return z==='SELECT'||z==='NEAR_MISS'||z==='WATCH';}).slice(0,30);const body=document.getElementById('watch-body');if(!rows.length)body.innerHTML='<tr><td colspan="4" class="muted" style="text-align:center;padding:18px">Empty</td></tr>';else body.innerHTML=rows.map(row=>{const d=(row.decision||'').toUpperCase();const cls=d==='SELECT'?'select':'watch';return '<tr><td><strong>'+row.symbol+'</strong></td><td><span class="tag '+cls+'">'+d+'</span></td><td>'+row.score+'</td><td class="muted">'+(row.reason||'')+'</td></tr>';}).join('');}catch(e){}}
 async function runDemo(){try{const r=await fetch('/api/demo/run');const d=await r.json();if(d.ok){document.getElementById('kpi-core').textContent=d.core_count||'—';document.getElementById('uni-core').textContent=d.core_count||'—';document.getElementById('ft-core').textContent='Core '+(d.core_count||'—');await loadScan();await loadBook();await loadPianoSummary();}}catch(e){}}
 async function runScan(){try{const r=await fetch('/api/scan/run');const d=await r.json();if(d.ok){await loadScan();await loadBook();await loadPianoSummary();}else await runDemo();}catch(e){await runDemo();}}
 function openDetail(row){document.getElementById('det-sym').textContent=row.symbol||'';document.getElementById('det-dec').textContent=row.decision||'—';document.getElementById('det-score').textContent=row.score!=null?row.score:'—';document.getElementById('det-reason').textContent=row.reason||'';document.getElementById('det-hits').innerHTML=(row.hits||[]).map(h=>{const st=(h.status||(h.passed?'PASS':'FAIL')).toUpperCase();const cls=st==='PASS'?'select':st==='UNKNOWN'?'unknown':'reject';return '<div class="row"><span>'+h.param_id+'</span><span class="tag '+cls+'">'+st+'</span></div>';}).join('')||'—';document.getElementById('tk-sym').value=row.symbol||'';if(row.ltp)document.getElementById('tk-price').value=row.ltp;showView('detail');}
-async function paperBuy(){const msg=document.getElementById('buy-msg'),btn=document.getElementById('btn-buy');const symbol=(document.getElementById('tk-sym').value||'').trim().toUpperCase();const qty=document.getElementById('tk-qty').value||'50';const price=document.getElementById('tk-price').value||'';const stop=document.getElementById('tk-stop').value||'';const target=document.getElementById('tk-target').value||'';if(!symbol){msg.textContent='Enter symbol';msg.style.color='#fca5a5';return;}btn.disabled=true;msg.textContent='Placing…';try{const r=await fetch('/api/paper/buy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol,qty,price,stop,target})});const d=await r.json();if(d.ok){msg.textContent=d.message||'Filled';msg.style.color='#86efac';await loadBook();showView('positions');}else{msg.textContent=d.error||'Failed';msg.style.color='#fca5a5';}}catch(e){msg.textContent=String(e);msg.style.color='#fca5a5';}btn.disabled=false;}
+async function paperBuy(){return paperOrder();}
+async function paperOrder(){const msg=document.getElementById('buy-msg'),btn=document.getElementById('btn-buy');const symbol=(document.getElementById('tk-sym').value||'').trim().toUpperCase();const qty=document.getElementById('tk-qty').value||'50';const price=document.getElementById('tk-price').value||'';const stop=document.getElementById('tk-stop').value||'';const target=document.getElementById('tk-target').value||'';const side=(document.getElementById('tk-side').value||'BUY').toUpperCase();const order_type=(document.getElementById('tk-type').value||'MARKET').toUpperCase();if(!symbol){msg.textContent='Enter symbol';msg.style.color='#fca5a5';return;}btn.disabled=true;msg.textContent='Placing…';try{const r=await fetch('/api/paper/order',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol,qty,price,stop,target,side,order_type})});const d=await r.json();if(d.ok){msg.textContent=d.message||'Filled';msg.style.color='#86efac';await loadBook();showView(side==='SELL'?'closed':'positions');}else{msg.textContent=d.error||d.message||'Failed';msg.style.color='#fca5a5';}}catch(e){msg.textContent=String(e);msg.style.color='#fca5a5';}btn.disabled=false;}
 
 function inr(n){if(n==null||n==='')return '—';return '₹'+Number(n).toLocaleString('en-IN',{maximumFractionDigits:0});}
 function pct(n,d){if(n==null||n==='')return '—';const x=Number(n);return (x>=0?'+':'')+x.toFixed(d==null?1:d);}
@@ -515,17 +597,29 @@ async function loadFactors(){
     document.getElementById('fac-cand').innerHTML='<tr><td colspan="4" class="muted">'+e+'</td></tr>';
   }
 }
-async function loadBook(){try{const r=await fetch('/api/paper/book');const d=await r.json();if(!d.ok)return;const oc=d.open_count!=null?d.open_count:0;['kpi-open','kpi-open2','plan-open'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=oc;});document.getElementById('ft-open').textContent='Open '+oc;
-const up=d.unrealized_pnl!=null?((d.unrealized_pnl>=0?'+':'')+d.unrealized_pnl):'—';
-const rp=d.realized_pnl!=null?((d.realized_pnl>=0?'+':'')+d.realized_pnl):'—';
+async function loadBook(){try{const r=await fetch('/api/paper/book');const d=await r.json();if(!d.ok)return;const oc=d.open_count!=null?d.open_count:0;['kpi-open','kpi-open2','plan-open','home-open-n'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=oc;});document.getElementById('ft-open').textContent='Open '+oc;
+const up=d.unrealized_pnl!=null?((d.unrealized_pnl>=0?'+':'')+Number(d.unrealized_pnl).toFixed(0)):'—';
+const rp=d.realized_pnl!=null?((d.realized_pnl>=0?'+':'')+Number(d.realized_pnl).toFixed(0)):'—';
 if(document.getElementById('plan-upnl'))document.getElementById('plan-upnl').textContent=up;
 if(document.getElementById('plan-rpnl'))document.getElementById('plan-rpnl').textContent=rp;
+if(document.getElementById('home-upnl')){const el=document.getElementById('home-upnl');el.textContent=up;el.className=(d.unrealized_pnl||0)<0?'dn':'up';}
+if(document.getElementById('home-rpnl')){const el=document.getElementById('home-rpnl');el.textContent=rp;el.className=(d.realized_pnl||0)<0?'dn':'up';}
 if(document.getElementById('plan-ltpsrc'))document.getElementById('plan-ltpsrc').textContent=d.ltp_source||'no_live_ltp';
 if(document.getElementById('home-ltpsrc'))document.getElementById('home-ltpsrc').textContent=d.ltp_source||'no_live_ltp';
 if(document.getElementById('kpi-upnl'))document.getElementById('kpi-upnl').textContent='P&L '+up;
 if(d.cash!=null){const c=inr(d.cash);['plan-cash','home-cash'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=c;});const ft=document.getElementById('ft-cash');if(ft)ft.textContent='Cash '+c;}
 if(d.equity!=null){const e=inr(d.equity);['plan-eq','home-eq'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=e;});const ft=document.getElementById('ft-eq');if(ft)ft.textContent='Eq '+e;}
 if(d.max_open!=null){const el=document.getElementById('plan-maxopen');if(el)el.textContent=d.max_open;}
+const st=d.closed_stats||{};
+if(document.getElementById('home-win')) document.getElementById('home-win').textContent=st.total? (st.win_rate+'%') : '—';
+if(document.getElementById('home-closed-n')) document.getElementById('home-closed-n').textContent=st.total||0;
+if(document.getElementById('home-deployed')) document.getElementById('home-deployed').textContent=d.deployed_pct!=null?(d.deployed_pct+'%'):'—';
+if(document.getElementById('cl-total')) document.getElementById('cl-total').textContent=st.total||0;
+if(document.getElementById('cl-win')) document.getElementById('cl-win').textContent=st.total?(st.win_rate+'%'):'—';
+if(document.getElementById('cl-wl')) document.getElementById('cl-wl').textContent=(st.wins||0)+'W / '+(st.losses||0)+'L';
+if(document.getElementById('cl-gp')) document.getElementById('cl-gp').textContent=st.gross_profit!=null?inr(st.gross_profit):'—';
+if(document.getElementById('cl-gl')) document.getElementById('cl-gl').textContent=st.gross_loss!=null?inr(st.gross_loss):'—';
+if(document.getElementById('cl-net')){const el=document.getElementById('cl-net'); el.textContent=st.net!=null?inr(st.net):'—'; el.className=(st.net||0)<0?'dn':'up';}
 
 if(d.upstox){const el=document.getElementById('upx-pill');if(el)el.textContent=d.upstox.connected?'Upstox OK':(d.upstox.token_set?'Upstox token':'Upstox off');}
 const lp=document.getElementById('ltp-pill');if(lp)lp.textContent='LTP '+(d.ltp_source||'—');
@@ -533,8 +627,8 @@ if(d.plan){if(d.plan.stop_pct!=null)document.getElementById('plan-stop').textCon
 if(d.governor){const lvl=(d.governor.level||'L0').split('_')[0];document.getElementById('kpi-gov').textContent=lvl;document.getElementById('gov-level').textContent=d.governor.level||'L0';document.getElementById('gov-pill').textContent='Gov '+lvl;const exp=d.governor.exposure_pct!=null?d.governor.exposure_pct:100;document.getElementById('gov-exp').textContent=exp+'%';document.getElementById('gov-bar').style.width=exp+'%';}
 const opens=d.open||[];const posBody=document.getElementById('pos-body');const homePos=document.getElementById('home-pos');
 if(!opens.length){posBody.innerHTML='<tr><td colspan="9" class="muted" style="text-align:center;padding:18px">No open — catch-up fills on live last</td></tr>';homePos.innerHTML='<tr><td colspan="5" class="muted" style="text-align:center;padding:16px">No opens</td></tr>';}
-else{posBody.innerHTML=opens.map(p=>{const pnl=p.pnl_label||(p.pnl!=null?((p.pnl>=0?'+':'')+p.pnl):'—');const col=(p.pnl!=null&&p.pnl<0)?'dn':'up';return '<tr><td><strong>'+p.symbol+'</strong></td><td>'+p.qty+'</td><td>'+p.entry+'</td><td>'+(p.ltp!=null?p.ltp:'—')+'</td><td class="'+col+'">'+pnl+'</td><td>'+(p.stop!=null?p.stop:'—')+'</td><td>'+(p.target!=null?p.target:'—')+'</td><td>'+(p.days_left!=null?p.days_left+'d':'—')+'</td><td><span class="tag open">'+(p.status||'OPEN')+'</span></td></tr>';}).join('');
-homePos.innerHTML=opens.slice(0,6).map(p=>{const pnl=p.pnl!=null?((p.pnl>=0?'+':'')+p.pnl):'—';const col=(p.pnl!=null&&p.pnl<0)?'dn':'up';return '<tr><td><strong>'+p.symbol+'</strong></td><td>'+(p.qty||'')+'</td><td>'+(p.entry!=null?p.entry:'—')+'</td><td>'+(p.ltp!=null?p.ltp:'—')+'</td><td class="'+col+'">'+pnl+'</td></tr>';}).join('');}
+else{posBody.innerHTML=opens.map(p=>{const pnl=p.pnl_label||(p.pnl!=null?((p.pnl>=0?'+':'')+p.pnl):'—');const col=(p.pnl!=null&&p.pnl<0)?'dn':'up';const live=p.ltp_live;const ltpCell=live?(p.ltp!=null?p.ltp:'—'):((p.ltp!=null?p.ltp:'—')+' <span class="entry-mark">entry</span>');const tt=p.to_target_pct!=null?((p.to_target_pct<=0?'🎯 ':'')+p.to_target_pct+'%'):'—';const ts=p.to_stop_pct!=null?(p.to_stop_pct+'%'):'—';return '<tr><td><strong>'+p.symbol+'</strong></td><td>'+p.qty+'</td><td>'+p.entry+'</td><td>'+ltpCell+'</td><td class="'+col+'">'+pnl+'</td><td class="up">'+tt+'</td><td class="dn">'+ts+'</td><td>'+(p.days_left!=null?p.days_left+'d':'—')+'</td><td><button class="btn" style="padding:4px 8px;color:#fca5a5" onclick="sellOne(\''+p.symbol+'\')">SELL</button></td></tr>';}).join('');
+homePos.innerHTML=opens.slice(0,8).map(p=>{const pnl=p.pnl!=null?((p.pnl>=0?'+':'')+p.pnl):'—';const col=(p.pnl!=null&&p.pnl<0)?'dn':'up';return '<tr><td><strong>'+p.symbol+'</strong></td><td>'+(p.qty||'')+'</td><td>'+(p.entry!=null?p.entry:'—')+'</td><td>'+(p.ltp!=null?p.ltp:'—')+(p.ltp_live?'':' <span class="entry-mark">entry</span>')+'</td><td class="'+col+'">'+pnl+'</td></tr>';}).join('');}
 const jn=d.journal||[];const jbody=document.getElementById('home-journal');
 if(jbody){
   if(!jn.length) jbody.innerHTML='<tr><td colspan="4" class="muted" style="text-align:center;padding:16px">Waiting first fill</td></tr>';
@@ -546,9 +640,14 @@ if(jbody){
 const orders=d.orders||[];const ordBody=document.getElementById('ord-body');
 if(!orders.length)ordBody.innerHTML='<tr><td colspan="6" class="muted" style="text-align:center;padding:18px">No orders</td></tr>';
 else ordBody.innerHTML=orders.slice(0,30).map(o=>'<tr><td class="muted">'+(o.created_at||'').replace('T',' ').replace('Z','')+'</td><td><strong>'+o.symbol+'</strong></td><td>'+o.side+'</td><td>'+(o.sized_qty!=null?o.sized_qty:o.qty)+'</td><td>'+o.fill_price+'</td><td>'+o.status+'</td></tr>').join('');
+const pending=d.pending||[];const pendBody=document.getElementById('pend-body');
+if(pendBody){
+  if(!pending.length) pendBody.innerHTML='<tr><td colspan="5" class="muted" style="text-align:center;padding:14px">None</td></tr>';
+  else pendBody.innerHTML=pending.map(o=>'<tr><td class="muted">'+(o.created_at||'').replace('T',' ').replace('Z','')+'</td><td><strong>'+o.symbol+'</strong></td><td>'+o.limit_price+'</td><td>'+(o.qty||'auto')+'</td><td>'+o.status+'</td></tr>').join('');
+}
 const closed=d.closed||[];const closedBody=document.getElementById('closed-body');
-if(!closed.length)closedBody.innerHTML='<tr><td colspan="9" class="muted" style="text-align:center;padding:18px">No closed</td></tr>';
-else closedBody.innerHTML=closed.slice().reverse().slice(0,30).map(p=>{const pnl=p.realized_pnl!=null?p.realized_pnl:(p.pnl!=null?p.pnl:null);const col=(pnl!=null&&pnl<0)?'dn':'up';const ev=p.entry_value!=null?inr(p.entry_value):'—';const xv=p.exit_value!=null?inr(p.exit_value):'—';const ret=p.return_pct!=null?(p.return_pct+'%'):'—';return '<tr><td><strong>'+p.symbol+'</strong></td><td>'+(p.qty||'')+'</td><td>'+p.entry+'</td><td>'+(p.exit_price!=null?p.exit_price:'—')+'</td><td>'+ev+'</td><td>'+xv+'</td><td class="'+col+'">'+(pnl==null?'—':((pnl>=0?'+':'')+pnl))+'</td><td>'+ret+'</td><td>'+(p.exit_reason||'—')+'</td></tr>';}).join('');
+if(!closed.length)closedBody.innerHTML='<tr><td colspan="10" class="muted" style="text-align:center;padding:18px">No closed trades yet</td></tr>';
+else closedBody.innerHTML=closed.map(p=>{const pnl=p.realized_pnl!=null?p.realized_pnl:(p.pnl!=null?p.pnl:null);const col=(pnl!=null&&pnl<0)?'dn':'up';const ev=p.entry_value!=null?inr(p.entry_value):'—';const xv=p.exit_value!=null?inr(p.exit_value):'—';const ret=p.return_pct!=null?(p.return_pct+'%'):'—';const hold=p.hold_days_closed!=null?p.hold_days_closed+'d':(p.days_held!=null?p.days_held+'d':'—');return '<tr><td><strong>'+p.symbol+'</strong></td><td>'+(p.qty||'')+'</td><td>'+p.entry+'</td><td>'+(p.exit_price!=null?p.exit_price:'—')+'</td><td>'+hold+'</td><td>'+ev+'</td><td>'+xv+'</td><td class="'+col+'">'+(pnl==null?'—':((pnl>=0?'+':'')+pnl))+'</td><td>'+ret+'</td><td>'+(p.exit_reason||'—')+'</td></tr>';}).join('');
 }catch(e){}}
 async function paintRobot(d){
   if(!d)return;
@@ -563,6 +662,13 @@ async function paintRobot(d){
   if(ft) ft.textContent='Robot bought '+(d.bought||0)+' sold '+(d.sold||0);
   const lp=document.getElementById('ltp-pill');
   if(lp && d.ltp_source) lp.textContent='LTP '+d.ltp_source;
+  const skips=d.skipped_detail||[];
+  const sn=document.getElementById('home-skip-n'); if(sn) sn.textContent=skips.length||d.skipped||0;
+  const sb=document.getElementById('home-skips');
+  if(sb){
+    if(!skips.length) sb.innerHTML='<tr><td colspan="2" class="muted" style="text-align:center;padding:12px">None this tick</td></tr>';
+    else sb.innerHTML=skips.slice(0,12).map(s=>'<tr><td><strong>'+(s.symbol||'')+'</strong></td><td class="muted">'+(s.reason||'')+'</td></tr>').join('');
+  }
 }
 async function loadRobot(){
   try{
@@ -582,7 +688,7 @@ async function runAuto(quiet){
     return d;
   }catch(e){if(!quiet)alert(e); return null;}
 }
-async function boot(){try{const r=await fetch('/api/health');const d=await r.json();if(d.build){const b=document.querySelector('.brand p');if(b)b.textContent=(d.parameter_set_id||'ash08-5cr-kelly-v1')+' · '+d.build;}if(d.paper_open!=null){const k=document.getElementById('kpi-open');if(k)k.textContent=d.paper_open;document.getElementById('ft-open').textContent='Open '+d.paper_open;}const ux=d.upstox||{};const pill=document.getElementById('upx-pill');if(pill)pill.textContent=ux.connected?'Upstox OK':(ux.token_set||d.upstox_token_set)?'Upstox token':'Upstox off';if(d.robot)paintRobot(d.robot);}catch(e){}try{const u=await fetch('/api/universe/core');const ud=await u.json();if(ud.count){const c=document.getElementById('kpi-core');if(c)c.textContent=ud.count;const u2=document.getElementById('uni-core');if(u2)u2.textContent=ud.count;}}catch(e){}await loadAdvise();await loadBook();await loadRobot();
+async function boot(){try{const r=await fetch('/api/health');const d=await r.json();if(d.build){const b=document.querySelector('.brand p');if(b)b.textContent=(d.parameter_set_id||'ash08-5cr-kelly-v1')+' · '+d.build;}if(d.paper_open!=null){const k=document.getElementById('kpi-open');if(k)k.textContent=d.paper_open;document.getElementById('ft-open').textContent='Open '+d.paper_open;}const ux=d.upstox||{};const pill=document.getElementById('upx-pill');if(pill)pill.textContent=ux.connected?'Upstox OK':(ux.token_set||d.upstox_token_set)?'Upstox token':'Upstox off';if(d.robot)paintRobot(d.robot);}catch(e){}try{const u=await fetch('/api/universe/core');const ud=await u.json();if(ud.count){const c=document.getElementById('kpi-core');if(c)c.textContent=ud.count;const u2=document.getElementById('uni-core');if(u2)u2.textContent=ud.count;}}catch(e){}await loadIndices();await loadAdvise();await loadBook();await loadRobot();
 try{const b=await (await fetch('/api/paper/book')).json(); if(!b.open_count) await runAuto(true);}catch(e){}
 }
 setInterval(loadRobot, 15000);

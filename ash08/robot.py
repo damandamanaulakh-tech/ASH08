@@ -154,27 +154,8 @@ def tick(
     elif not buys:
         buy_result["skipped_detail"] = [{"symbol": "*", "reason": "no_buy_names"}]
 
-    if hasattr(engine, "log_event"):
-        for o in buy_result.get("orders") or []:
-            engine.log_event(
-                "BUY",
-                symbol=o.get("symbol"),
-                qty=o.get("sized_qty") or o.get("qty"),
-                price=o.get("fill_price"),
-                stop=o.get("stop"),
-                target=o.get("target"),
-                source="auto_select",
-            )
-        for s in sold:
-            engine.log_event(
-                "SELL",
-                symbol=s.get("symbol"),
-                price=s.get("exit_price"),
-                reason=s.get("reason"),
-                pnl=s.get("pnl"),
-            )
-        if (buy_result.get("bought") or sold) and hasattr(engine, "_save"):
-            engine._save()
+    if (buy_result.get("bought") or sold) and hasattr(engine, "_save"):
+        engine._save()
 
     ltp_source = (pack_source or "live") if live else "no_live_ltp"
     body = {

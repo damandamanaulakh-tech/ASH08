@@ -18,7 +18,7 @@ LOG = logging.getLogger("ash08.api")
 DESK = ROOT / "desk"
 PORT = int(os.environ.get("PORT", "10000"))
 DATA_DIR = Path("ash08_data")
-BUILD = "2026-09-09-tape-yahoo"
+BUILD = "2026-09-10-desk"
 REF_LTP = {
     "TCS": 3840.0, "HDFCBANK": 1690.0, "RELIANCE": 2950.0, "INFY": 1850.0,
     "ICICIBANK": 1180.0, "SBIN": 820.0, "ITC": 450.0, "MTARTECH": 1850.0,
@@ -304,6 +304,12 @@ class Handler(BaseHTTPRequestHandler):
             body = {}
         if path == "/api/paper/buy":
             return self.api_paper_buy(body)
+        if path in ("/api/paper/order", "/api/paper/ticket"):
+            return self.api_paper_order(body)
+        if path == "/api/paper/sell":
+            return self.api_paper_sell(body)
+        if path in ("/api/paper/close-all", "/api/paper/close_all"):
+            return self.api_paper_close_all(body)
         if path == "/api/pnl/tick":
             return self.api_pnl_tick()
         return self.json(404, {"ok": False, "error": "not found"})
@@ -429,6 +435,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.json(200, data or {"rows": []})
         if path in ("/api/scan/run", "/api/demo/run"):
             return self.json(200, scan_core(auto_buy=False))
+        if path in ("/api/desk", "/api/dashboard"):
+            return self.api_desk()
         if path == "/api/paper/book":
             return self.api_paper_book()
         if path == "/api/pnl/tick":
@@ -440,8 +448,15 @@ class Handler(BaseHTTPRequestHandler):
                 "price": (qs.get("price") or [""])[0],
                 "stop": (qs.get("stop") or [""])[0],
                 "target": (qs.get("target") or [""])[0],
+                "side": "BUY",
             }
             return self.api_paper_buy(body)
+        if path == "/api/paper/sell":
+            body = {
+                "symbol": (qs.get("symbol") or [""])[0],
+                "price": (qs.get("price") or [""])[0],
+            }
+            return self.api_paper_sell(body)
         if path == "/api/paper/auto":
             return self.json(200, run_robot_tick(force_buy=True))
         if path in ("/api/robot/tick", "/api/robot/run"):
@@ -516,9 +531,13 @@ class Handler(BaseHTTPRequestHandler):
             "sell_cost_pct": book.get("sell_cost_pct"),
             "max_open": book.get("max_open"),
             "journal": book.get("journal") or getattr(eng, "journal", []),
+            "pending": book.get("pending") or [],
+            "closed_count": book.get("closed_count") or 0,
+            "closed_stats": book.get("closed_stats") or {},
+            "deployed_pct": book.get("deployed_pct"),
             "parameter_set_id": cfg.get("parameter_set_id"),
             "build": BUILD,
-            "note": "Cash is tracked. Book persists. P&L needs live last. Missing quote ≠ fake fill.",
+            "note": "Cash is tracked. Book persists. P&L needs live last. Missing quote ≠ fake fill. SELL is first-class.",
         })
 
     def api_pnl_tick(self):
@@ -545,44 +564,163 @@ class Handler(BaseHTTPRequestHandler):
             "upstox": upstox_status(),
         })
 
+    def _num(self, v, d=None):
+        if v is None or v == "":
+            return d
+        try:
+            return float(v)
+        except Exception:
+            return d
+
     def api_paper_buy(self, body):
+        body = dict(body or {})
+        body["side"] = "BUY"
+        return self.api_paper_order(body)
+
+    def api_paper_sell(self, body):
+        body = dict(body or {})
+        body["side"] = "SELL"
+        return self.api_paper_order(body)
+
+    def api_paper_order(self, body):
         eng = get_engine()
         if not eng:
             return self.json(500, {"ok": False, "error": "paper engine missing"})
         symbol = str(body.get("symbol") or "").strip().upper()
         if not symbol:
             return self.json(400, {"ok": False, "error": "symbol required"})
+        side = str(body.get("side") or "BUY").upper()
+        ot = str(body.get("order_type") or body.get("type") or "MARKET").upper()
         try:
             qty = max(1, int(float(body.get("qty") or 50)))
         except Exception:
             qty = 50
-        def _f(v, d=None):
-            if v is None or v == "":
-                return d
+        price = self._num(body.get("price") or body.get("limit_price"))
+        stop = self._num(body.get("stop"))
+        target = self._num(body.get("target"))
+        live = quotes_for_symbols([symbol])
+        live_px = live.get(symbol)
+        if side == "SELL":
+            px = price if price and price > 0 else live_px
+            if not px or px <= 0:
+                return self.json(400, {"ok": False, "error": "no_live_ltp — type a fill or connect quotes. Will not invent a sell."})
             try:
-                return float(v)
-            except Exception:
-                return d
-        price = _f(body.get("price")); stop = _f(body.get("stop")); target = _f(body.get("target"))
-        if not price or price <= 0:
-            live = quotes_for_symbols([symbol])
-            price = live.get(symbol)
-        if not price or price <= 0:
+                order = eng.close_position(symbol, px, reason="OWNER_SELL", source="manual")
+            except Exception as e:
+                LOG.exception("sell")
+                return self.json(500, {"ok": False, "error": str(e)})
+            if order.get("status") == "REJECTED":
+                return self.json(400, {"ok": False, "error": order.get("reason") or "rejected", "order": order})
+            return self.json(200, {
+                "ok": True, "order": order,
+                "open_count": len(eng.open_symbols()),
+                "message": f"PAPER SELL {symbol} x {order.get('qty')} @ {px} → Closed Trades ({order.get('exit_reason')})",
+            })
+        if ot == "LIMIT":
+            if not price or price <= 0:
+                return self.json(400, {"ok": False, "error": "limit price required"})
+            order = eng.place_order(
+                symbol=symbol, side="BUY", order_type="LIMIT", qty=qty,
+                fill_price=price, stop=stop, target=target, source="manual",
+            )
+            return self.json(200, {
+                "ok": True, "order": order,
+                "message": f"PAPER LIMIT BUY {symbol} @ {price} day-resting — fills if live last ≤ limit",
+            })
+        px = price if price and price > 0 else live_px
+        if not px or px <= 0:
             return self.json(400, {"ok": False, "error": "no_live_ltp — will not invent a fill"})
         try:
-            order = eng.place_order(symbol=symbol, side="BUY", order_type="MARKET",
-                                    qty=qty, fill_price=price, stop=stop, target=target, source="manual")
+            order = eng.place_order(
+                symbol=symbol, side="BUY", order_type="MARKET", qty=qty,
+                fill_price=px, stop=stop, target=target, source="manual",
+                why=body.get("why"),
+            )
             if hasattr(eng, "book_payload"):
                 eng.book_payload(live_prices=quotes_for_symbols([symbol]))
-            elif hasattr(eng, "mark_to_market"):
-                eng.mark_to_market({symbol: price})
         except Exception as e:
             LOG.exception("buy")
             return self.json(500, {"ok": False, "error": str(e)})
         opens = [p for p in eng.positions if p.get("status") == "OPEN"]
+        msg = order.get("reason") or order.get("status")
         return self.json(200, {
-            "ok": True, "order": order, "open_count": len(opens), "positions": opens,
-            "message": f"PAPER {order.get('status')}: {symbol} x {order.get('sized_qty') or order.get('qty')} @ {price} | stop={order.get('stop')} target={order.get('target')} hold={order.get('hold_days')}d",
+            "ok": order.get("status") == "FILLED",
+            "order": order, "open_count": len(opens), "positions": opens,
+            "message": f"PAPER {order.get('status')}: {symbol} x {order.get('sized_qty') or order.get('qty')} @ {px} | stop={order.get('stop')} target={order.get('target')} hold={order.get('hold_days')}d"
+            if order.get("status") == "FILLED" else f"PAPER REJECTED {symbol}: {msg}",
+        })
+
+    def api_paper_close_all(self, body=None):
+        eng = get_engine()
+        if not eng:
+            return self.json(500, {"ok": False, "error": "paper engine missing"})
+        opens = [p["symbol"] for p in eng.positions if p.get("status") == "OPEN"]
+        pack = quotes_pack_for(opens)
+        live = pack.get("prices") or {}
+        result = eng.close_all(live)
+        return self.json(200, {
+            "ok": True,
+            **result,
+            "ltp_source": pack.get("source"),
+            "open_count": len(eng.open_symbols()),
+            "message": f"Closed {result.get('closed') or 0} at live last. {len(result.get('skipped') or [])} left open (no quote).",
+        })
+
+    def api_desk(self):
+        eng = get_engine()
+        advise = {}
+        try:
+            from ash08.advisory import payload as advise_fn
+            advise = advise_fn()
+        except Exception as e:
+            advise = {"ok": False, "error": str(e)}
+        book = {}
+        if eng and hasattr(eng, "book_payload"):
+            opens_sym = [p["symbol"] for p in eng.positions if p.get("status") == "OPEN"]
+            pack = quotes_pack_for(opens_sym)
+            book = eng.book_payload(live_prices=pack.get("prices") or {})
+            book["ltp_source"] = pack.get("source")
+        else:
+            pack = {"source": "no_live_ltp"}
+        why_map = {str(r.get("symbol") or "").upper(): r for r in (advise.get("buy") or []) + (advise.get("watch") or [])}
+        for p in book.get("open") or []:
+            row = why_map.get(str(p.get("symbol") or "").upper())
+            if row and not p.get("why"):
+                p["why"] = row.get("why")
+            if row:
+                p["steps"] = row.get("steps") or []
+                p["rank"] = row.get("rank")
+        tiles = []
+        try:
+            from ash08.indices import fetch_index_tiles
+            ux = upstox_status()
+            if "fetch_quotes" in MODS:
+                tiles = fetch_index_tiles(MODS["fetch_quotes"], bool(ux.get("token_set"))).get("tiles") or []
+            else:
+                tiles = fetch_index_tiles(lambda _k: (_ for _ in ()).throw(RuntimeError("missing")), False).get("tiles") or []
+        except Exception:
+            tiles = []
+        robot = _robot_status()
+        cfg = public_config()
+        return self.json(200, {
+            "ok": True,
+            "build": BUILD,
+            "parameter_set_id": cfg.get("parameter_set_id"),
+            "contract": {
+                "book_value": cfg["book_value"],
+                "stop_pct": cfg["stop_pct"],
+                "target_pct": cfg["target_pct"],
+                "max_hold_sessions": cfg["max_hold_sessions"],
+                "score_select": cfg["scanner"]["score_select"],
+                "kelly": cfg["sizing"],
+            },
+            "advise": advise,
+            "book": book,
+            "robot": robot,
+            "indices": tiles,
+            "upstox": upstox_status(),
+            "governor": eng.governor.to_dict() if eng and hasattr(eng.governor, "to_dict") else {},
+            "skipped": (robot.get("skipped_detail") or [])[:20],
         })
 
     def serve_static(self, path):
