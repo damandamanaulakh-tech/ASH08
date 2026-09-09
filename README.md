@@ -7,17 +7,19 @@ ASH08 is the **full paper desk** — bigger than AM07 — on **ASH08 numbers onl
 
 It runs the AM07-style day (09:20 scan, 14:30 top-up, 15:25 square-off + expire limits, 15:35 mark) **and** the 45s catch-up robot. Pages are jobs: dashboard, scan, why, piano, register, triggers, ticket, open, closed, shadow book, risk, alerts, engine/clock, strategy, reports, YoY, factors, universe, segments, settings.
 
-Paper only. Live last or skip — no invented fill.
+Paper only. **NSE session last is Upstox only. Yahoo last only after hours.** Tape close is not a fill.
 
 ## What the robot does
 
 | When (IST) | Action |
 |------|--------|
-| 09:20 | Morning scan + auto-buy Today's BUY (½-Kelly) |
+| 09:15–15:30 Mon–Fri | Live last = **Upstox only**. Auto-buy Today's BUY at that last (½-Kelly). Auto-sell −3 / +6 / 15d |
+| After hours / weekend | Live last = **Yahoo only**. Marks and rail exits. **No new auto-buy** unless `/api/robot/tick?force=1` |
+| 09:20 | Morning scan + auto-buy Today's BUY (Upstox last) |
 | 14:30 | Top-up if deployed < 60% |
 | 15:25 | Expire day-limits · square **intraday** names at live last |
 | 15:35 | Mark book · fire −3 / +6 / 15d |
-| Every 45s | Catch-up buy + rail exits whenever a live last exists |
+| Every 45s | Session catch-up on Upstox last. After hours Yahoo marks only |
 | No live LTP | **No buy, no sell.** P&L stays 0 on that name |
 
 Manual: `/api/robot/tick?force=1`. Clock status: `/api/engine`.
@@ -43,7 +45,9 @@ AM07 was the pattern (robot picker + journal). ASH08 numbers stay: ₹5 Cr, Kell
 
 | Feed | Status |
 |------|--------|
-| Yahoo Finance v8 daily 5y, last bar = last session | CLOSED — T1 T2 T3 T9 M1 M6 |
+| Live last in session | **Upstox only** — missing quote = no fill |
+| Live last after hours | **Yahoo only** — marks / force tick |
+| Yahoo Finance v8 daily 5y, last bar = last session | CLOSED tape for T1 T2 T3 T9 M1 M6 (not a fill) |
 | NSE bhav 08-Jun-2026 `DELIV_PER` | SNAPSHOT_1D — official, not a fake 20d avg |
 | FII/DII net through **2026-08-07** | CLOSED for size throttle |
 | Mcap ≥ ₹5,000 Cr | PROXY_N200 — no rupee mcap field |
@@ -66,7 +70,7 @@ AM07 was the pattern (robot picker + journal). ASH08 numbers stay: ₹5 Cr, Kell
 | `/api/reports` `/api/risk` `/api/alerts` | Closed-trade reports, live risk, journal alerts |
 | `/api/register` `/api/triggers` `/api/shadow` | Selection register, Chitty/T gates, opportunity-cost book |
 | `/api/engine` `/api/schedule` `/api/settings` | IST clock, last jobs, locked formula |
-| `/api/health` | `build=2026-09-10-full-desk` |
+| `/api/health` | `build=2026-09-10-upstox-session` |
 
 ## Run
 

@@ -108,7 +108,7 @@ class RobotTests(unittest.TestCase):
             self.assertEqual(eng.positions[0]["status"], "CLOSED")
             self.assertEqual(eng.positions[0]["exit_reason"], "MAX_HOLD")
 
-    def test_after_hours_buys_when_last_exists(self):
+    def test_after_hours_does_not_buy_without_force(self):
         with tempfile.TemporaryDirectory() as d:
             eng = PaperEngine(d, book_value=50_000_000)
             buys = advise()["buy"]
@@ -123,15 +123,35 @@ class RobotTests(unittest.TestCase):
                 now=datetime(2026, 9, 9, 16, 40),
                 force_buy=False,
             )
+            self.assertEqual(body["bought"], 0)
+            self.assertEqual(eng.cash, 50_000_000)
+            self.assertEqual(body["skipped_detail"][0]["reason"], "session_closed")
+
+    def test_after_hours_force_buys_on_yahoo_last(self):
+        with tempfile.TemporaryDirectory() as d:
+            eng = PaperEngine(d, book_value=50_000_000)
+            buys = advise()["buy"]
+            prices = {r["symbol"]: float(r["close"]) for r in buys}
+
+            def qfn(syms):
+                return {"prices": {s: prices[s] for s in syms if s in prices}, "source": "yahoo"}
+
+            body = tick(
+                eng,
+                quote_fn=qfn,
+                now=datetime(2026, 9, 9, 16, 40),
+                force_buy=True,
+            )
             self.assertGreaterEqual(body["bought"], 1)
-            self.assertEqual(len([p for p in eng.positions if p.get("status") == "OPEN"]), body["open_count"])
-            self.assertTrue(eng.journal)
-            self.assertEqual(eng.journal[-1]["event"], "BUY")
+            self.assertEqual(body["ltp_source"], "yahoo")
 
     def test_session_helper_weekday_shape(self):
         s = session_now(datetime(2026, 9, 9, 10, 0))  # Wed
-        self.assertIn("buy_window", s)
-        self.assertIn("sell_window", s)
+        self.assertTrue(s["buy_window"])
+        self.assertEqual(s["quote_mode"], "upstox")
+        closed = session_now(datetime(2026, 9, 9, 16, 40))
+        self.assertFalse(closed["buy_window"])
+        self.assertEqual(closed["quote_mode"], "yahoo")
 
 
 if __name__ == "__main__":

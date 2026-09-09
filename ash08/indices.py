@@ -1,14 +1,15 @@
-"""G4 index tiles. Upstox quotes only. 403/missing → failed, never a fake print."""
+"""G4 index tiles. Upstox in session. Yahoo after hours. Never a fake print."""
 from __future__ import annotations
 
 from typing import Any, Callable, Dict, List, Optional
 
 # Documented Upstox v2 instrument keys (not guessed LTPs).
+# yahoo_chart is the after-hours feed only.
 INDEX_SPECS = [
-    {"id": "NIFTY50", "label": "NIFTY 50", "instrument_key": "NSE_INDEX|Nifty 50"},
-    {"id": "SENSEX", "label": "SENSEX", "instrument_key": "BSE_INDEX|SENSEX"},
-    {"id": "BANKNIFTY", "label": "BANK NIFTY", "instrument_key": "NSE_INDEX|Nifty Bank"},
-    {"id": "INDIAVIX", "label": "INDIA VIX", "instrument_key": "NSE_INDEX|India VIX"},
+    {"id": "NIFTY50", "label": "NIFTY 50", "instrument_key": "NSE_INDEX|Nifty 50", "yahoo_chart": "^NSEI"},
+    {"id": "SENSEX", "label": "SENSEX", "instrument_key": "BSE_INDEX|SENSEX", "yahoo_chart": "^BSESN"},
+    {"id": "BANKNIFTY", "label": "BANK NIFTY", "instrument_key": "NSE_INDEX|Nifty Bank", "yahoo_chart": "^NSEBANK"},
+    {"id": "INDIAVIX", "label": "INDIA VIX", "instrument_key": "NSE_INDEX|India VIX", "yahoo_chart": "^INDIAVIX"},
 ]
 
 
@@ -64,8 +65,53 @@ def _failed(spec: dict, detail: str) -> dict:
     }
 
 
-def fetch_index_tiles(fetch_quotes: Callable[[List[str]], Dict[str, Any]], token_set: bool) -> dict:
-    """Return tiles. Never invent LTP. status is ok or failed."""
+def fetch_index_tiles(
+    fetch_quotes: Callable[[List[str]], Dict[str, Any]],
+    token_set: bool,
+    *,
+    after_hours: bool = False,
+    yahoo_index_fn: Optional[Callable[[str], Optional[float]]] = None,
+) -> dict:
+    """Return tiles. Never invent LTP. status is ok or failed.
+
+    Session: Upstox only. After hours: Yahoo chart last for the documented index codes.
+    """
+    if after_hours:
+        getter = yahoo_index_fn
+        if getter is None:
+            from ash08.quotes import fetch_yahoo_one
+            getter = fetch_yahoo_one
+        tiles = []
+        any_ok = False
+        for spec in INDEX_SPECS:
+            try:
+                px = getter(spec.get("yahoo_chart") or "")
+            except Exception as e:
+                tiles.append(_failed(spec, str(e)[:220]))
+                continue
+            try:
+                ltp = float(px) if px is not None else None
+            except (TypeError, ValueError):
+                ltp = None
+            if ltp is None or ltp <= 0:
+                tiles.append(_failed(spec, "no yahoo last after hours"))
+                continue
+            any_ok = True
+            tiles.append({
+                "id": spec["id"],
+                "label": spec["label"],
+                "instrument_key": spec["instrument_key"],
+                "ltp": ltp,
+                "change": None,
+                "status": "ok",
+                "detail": "yahoo_after_hours",
+            })
+        return {
+            "ok": any_ok,
+            "status": "ok" if any_ok else "failed",
+            "detail": "yahoo_after_hours" if any_ok else "no yahoo last after hours",
+            "tiles": tiles,
+        }
     if not token_set:
         tiles = [_failed(s, "no token") for s in INDEX_SPECS]
         return {"ok": False, "status": "failed", "detail": "no token", "tiles": tiles}

@@ -1,6 +1,6 @@
 """Paper robot. Buys Today's Advice. Sells on −3 / +6 / 15d.
 
-Paper only. Live last (Upstox, else Yahoo chart) or skip. Never invents a fill.
+Paper only. Session last is Upstox; Yahoo only after hours. Never invents a fill.
 """
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 from zoneinfo import ZoneInfo
 
 from ash08.advisory import payload as advise_payload
+from ash08.session import session_state
 
 LOG = logging.getLogger("ash08.robot")
 IST = ZoneInfo("Asia/Kolkata")
@@ -33,28 +34,12 @@ _LAST: Dict[str, Any] = {
     "buy_symbols": [],
     "sold_detail": [],
     "skipped_detail": [],
-    "note": "Paper robot. BUY names auto-fill on live last (Upstox or Yahoo). Exits −3% / +6% / 15d. No fake mark.",
+    "note": "Paper robot. NSE session = Upstox last only. After hours = Yahoo last. New buys need the session unless force=1. Exits −3% / +6% / 15d. No fake mark.",
 }
 
 
 def session_now(now: Optional[datetime] = None) -> Dict[str, Any]:
-    now = now or datetime.now(IST)
-    if now.tzinfo is None:
-        now = now.replace(tzinfo=IST)
-    else:
-        now = now.astimezone(IST)
-    mins = now.hour * 60 + now.minute
-    weekday = now.weekday() < 5
-    in_reg = weekday and (9 * 60 + 15) <= mins <= (15 * 60 + 30)
-    in_mark = weekday and (9 * 60 + 15) <= mins <= (15 * 60 + 40)
-    return {
-        "now_ist": now.strftime("%Y-%m-%d %H:%M"),
-        "weekday": weekday,
-        "buy_window": in_reg,
-        "sell_window": in_mark,
-        "open": in_reg,
-        "why": "nse_session" if in_reg else ("mark_window" if in_mark else ("weekend" if not weekday else "closed")),
-    }
+    return session_state(now)
 
 
 def _rows_for_engine(buys: List[dict], live: Dict[str, float]) -> List[dict]:
@@ -80,7 +65,7 @@ def _parse_quotes(raw: Any) -> tuple[Dict[str, float], Optional[str]]:
         prices = raw.get("prices") or {}
     live: Dict[str, float] = {}
     for k, v in prices.items():
-        if str(k).lower() in ("prices", "source", "upstox_n", "yahoo_n", "cached"):
+        if str(k).lower() in ("prices", "source", "upstox_n", "yahoo_n", "cached", "quote_mode", "session"):
             continue
         try:
             px = float(v)
@@ -145,7 +130,8 @@ def tick(
         "skipped_detail": [],
         "open_count": len(engine.open_symbols()),
     }
-    allow_buy = bool(live)
+    in_session = bool(sess.get("buy_window"))
+    allow_buy = bool(live) and (in_session or force_buy)
     if allow_buy and buys:
         rows = _rows_for_engine(buys, live)
         buy_result = engine.auto_buy_selects(rows, price_map=live)
@@ -153,6 +139,8 @@ def tick(
             engine.ingest_shadow(rows, buy_result.get("skipped_detail") or [], live)
     elif not live:
         buy_result["skipped_detail"] = [{"symbol": "*", "reason": "no_live_ltp"}]
+    elif not in_session and not force_buy:
+        buy_result["skipped_detail"] = [{"symbol": "*", "reason": "session_closed"}]
     elif not buys:
         buy_result["skipped_detail"] = [{"symbol": "*", "reason": "no_buy_names"}]
 
@@ -190,7 +178,8 @@ def tick(
             }
             for o in (buy_result.get("orders") or [])
         ],
-        "note": "Paper. Catch-up buy whenever a live last exists. Auto-sell −3/+6/15d. Book persists.",
+        "quote_mode": sess.get("quote_mode"),
+        "note": "Paper. Session buys need Upstox last. After hours Yahoo marks/exits; new buys need force=1. Auto-sell −3/+6/15d.",
     }
     with _LOCK:
         _LAST.update(body)

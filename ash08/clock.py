@@ -67,7 +67,7 @@ def schedule_payload(last_run: Optional[Dict[str, str]] = None, now: Optional[da
         "now_ist": now.strftime("%Y-%m-%d %H:%M"),
         "weekday": now.weekday() < 5,
         "jobs": rows,
-        "note": "ASH08 rails −3/+6/15d. Intraday also squares at 15:25. 45s robot still catch-up buys.",
+        "note": "ASH08 rails −3/+6/15d. Session last is Upstox. Yahoo last only after hours. 45s robot buys in session.",
     }
 
 

@@ -1,6 +1,7 @@
-"""Live last prices. Upstox first, Yahoo chart last as fallback.
+"""Live last prices.
 
-Never invents a mark. Missing quote = no fill. Tape close is not a fill.
+NSE session (Mon–Fri 09:15–15:30 IST): Upstox only. No Yahoo fill.
+After hours / weekend: Yahoo only. Never invents a mark. Tape close is not a fill.
 """
 from __future__ import annotations
 
@@ -15,6 +16,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
+
+from ash08.session import session_state
 
 LOG = logging.getLogger("ash08.quotes")
 
@@ -49,6 +52,14 @@ def yahoo_symbol(nse: str) -> str:
         raw = raw[:-3]
     raw = NSE_TO_YAHOO.get(raw, raw)
     return f"{raw}.NS"
+
+
+def chart_symbol(nse: str) -> str:
+    """Yahoo chart ticker. Index codes (^NSEI) stay as-is; NSE names get .NS."""
+    raw = str(nse or "").strip()
+    if raw.startswith("^"):
+        return raw
+    return yahoo_symbol(raw)
 
 
 def _headers() -> Dict[str, str]:
@@ -86,7 +97,7 @@ def _px_from_chart(payload: dict) -> Optional[float]:
 
 
 def fetch_yahoo_one(nse: str) -> Optional[float]:
-    ysym = yahoo_symbol(nse)
+    ysym = chart_symbol(nse)
     quoted = urllib.parse.quote(ysym, safe=".-")
     last_err = None
     for tmpl in YAHOO_HOSTS:
@@ -155,7 +166,7 @@ def fetch_upstox_ltp(symbols: List[str], data_dir: str | Path = "ash08_data") ->
         if px > 0:
             out[str(k).upper()] = px
     if not out:
-        # Token present but empty/401-equivalent: cool down so Yahoo can fill.
+        # Token present but empty/401-equivalent. Session will not fall to Yahoo.
         _UPX_DEAD_UNTIL = time.time() + min(60.0, UPSTOX_COOLDOWN)
     return out
 
@@ -175,14 +186,32 @@ def quotes_pack(
     data_dir: str | Path = "ash08_data",
     yahoo_fn: Optional[FetchFn] = None,
     use_cache: bool = True,
+    now: Optional[datetime] = None,
 ) -> Dict[str, Any]:
     want = list(dict.fromkeys(str(s).upper() for s in (symbols or []) if s))
+    sess = session_state(now)
+    quote_mode = sess["quote_mode"]
+    empty = {
+        "prices": {},
+        "source": "no_live_ltp",
+        "upstox_n": 0,
+        "yahoo_n": 0,
+        "quote_mode": quote_mode,
+        "session": sess["why"],
+        "cached": False,
+    }
     if not want:
-        return {"prices": {}, "source": "no_live_ltp", "upstox_n": 0, "yahoo_n": 0}
+        return empty
 
-    now = time.time()
+    tnow = time.time()
     have: Dict[str, float] = {}
-    if use_cache and _CACHE["prices"] and now - float(_CACHE["t"] or 0) < CACHE_TTL:
+    cache_ok = (
+        use_cache
+        and _CACHE["prices"]
+        and _CACHE.get("mode") == quote_mode
+        and tnow - float(_CACHE["t"] or 0) < CACHE_TTL
+    )
+    if cache_ok:
         have = {s: _CACHE["prices"][s] for s in want if s in _CACHE["prices"]}
         missing = [s for s in want if s not in have]
         if not missing:
@@ -191,20 +220,32 @@ def quotes_pack(
                 "source": _CACHE.get("source") or "no_live_ltp",
                 "upstox_n": 0,
                 "yahoo_n": 0,
+                "quote_mode": quote_mode,
+                "session": sess["why"],
                 "cached": True,
             }
     else:
         missing = want
 
-    upx = fetch_upstox_ltp(missing, data_dir)
-    still = [s for s in missing if s not in upx]
-    yah = fetch_yahoo_ltp(still, fetch_fn=yahoo_fn) if still else {}
+    upx: Dict[str, float] = {}
+    yah: Dict[str, float] = {}
+    if quote_mode == "upstox":
+        upx = fetch_upstox_ltp(missing, data_dir)
+    else:
+        yah = fetch_yahoo_ltp(missing, fetch_fn=yahoo_fn) if missing else {}
+
     prices = {**have, **upx, **yah}
-    source = _source(upx, yah) if (upx or yah) else ("no_live_ltp" if not have else str(_CACHE.get("source") or "live"))
-    if have and not upx and not yah:
-        source = str(_CACHE.get("source") or "live")
-    _CACHE["t"] = now
-    merged = dict(_CACHE.get("prices") or {})
+    if upx:
+        source = "upstox"
+    elif yah:
+        source = "yahoo"
+    elif have:
+        source = str(_CACHE.get("source") or "no_live_ltp")
+    else:
+        source = "no_live_ltp"
+    _CACHE["t"] = tnow
+    _CACHE["mode"] = quote_mode
+    merged = dict(_CACHE.get("prices") or {}) if _CACHE.get("mode") == quote_mode else {}
     merged.update(prices)
     _CACHE["prices"] = merged
     if upx or yah:
@@ -214,6 +255,8 @@ def quotes_pack(
         "source": source if prices else "no_live_ltp",
         "upstox_n": len(upx),
         "yahoo_n": len(yah),
+        "quote_mode": quote_mode,
+        "session": sess["why"],
         "cached": False,
     }
 
@@ -222,8 +265,9 @@ def quotes_for_symbols(
     symbols: List[str],
     data_dir: str | Path = "ash08_data",
     yahoo_fn: Optional[FetchFn] = None,
+    now: Optional[datetime] = None,
 ) -> Dict[str, float]:
-    return quotes_pack(symbols, data_dir=data_dir, yahoo_fn=yahoo_fn).get("prices") or {}
+    return quotes_pack(symbols, data_dir=data_dir, yahoo_fn=yahoo_fn, now=now).get("prices") or {}
 
 
 def _bar_num(arr: list, i: int, fallback: float) -> float:

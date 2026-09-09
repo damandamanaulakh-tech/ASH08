@@ -1,13 +1,17 @@
-"""Live quotes: Upstox first, Yahoo last, never REF_LTP."""
+"""Live quotes: Upstox in session, Yahoo after hours, never REF_LTP."""
 from __future__ import annotations
 
 import os
+from datetime import datetime
 from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
 
-from ash08.quotes import bars_from_yahoo_chart, quotes_pack, yahoo_symbol
+from ash08.quotes import bars_from_yahoo_chart, chart_symbol, quotes_pack, yahoo_symbol
+
+SESSION = datetime(2026, 9, 9, 10, 30)  # Wed in cash session
+AFTER = datetime(2026, 9, 9, 16, 40)  # Wed after hours
 
 
 class QuotesTests(unittest.TestCase):
@@ -16,13 +20,14 @@ class QuotesTests(unittest.TestCase):
         self.assertEqual(yahoo_symbol("M&M"), "M&M.NS")
         self.assertEqual(yahoo_symbol("M.M"), "M&M.NS")
         self.assertEqual(yahoo_symbol("BAJAJ-AUTO"), "BAJAJ-AUTO.NS")
+        self.assertEqual(chart_symbol("^NSEI"), "^NSEI")
 
     def test_module_does_not_invent_ref_ltp(self):
         src = (Path(__file__).resolve().parents[1] / "ash08" / "quotes.py").read_text(encoding="utf-8")
         self.assertNotIn("REF_LTP", src)
         self.assertNotIn("2190.5", src)
 
-    def test_yahoo_fills_when_upstox_empty(self):
+    def test_yahoo_fills_after_hours_when_upstox_empty(self):
         fake = {
             "BHARATFORG": 1975.6,
             "ADANIENSOL": 1428.6,
@@ -34,19 +39,31 @@ class QuotesTests(unittest.TestCase):
             return fake.get(str(sym).upper())
 
         with tempfile.TemporaryDirectory() as d, patch.dict(os.environ, {"UPSTOX_ACCESS_TOKEN": ""}):
-            pack = quotes_pack(list(fake), data_dir=d, yahoo_fn=yfn, use_cache=False)
+            pack = quotes_pack(list(fake), data_dir=d, yahoo_fn=yfn, use_cache=False, now=AFTER)
         self.assertEqual(pack["source"], "yahoo")
+        self.assertEqual(pack["quote_mode"], "yahoo")
         self.assertEqual(pack["yahoo_n"], 4)
         self.assertEqual(pack["upstox_n"], 0)
         self.assertAlmostEqual(pack["prices"]["BHARATFORG"], 1975.6)
         self.assertNotAlmostEqual(pack["prices"]["BHARATFORG"], 2190.5)
+
+    def test_session_does_not_fall_to_yahoo(self):
+        def yfn(_sym):
+            return 1975.6
+
+        with tempfile.TemporaryDirectory() as d, patch.dict(os.environ, {"UPSTOX_ACCESS_TOKEN": ""}):
+            pack = quotes_pack(["BHARATFORG"], data_dir=d, yahoo_fn=yfn, use_cache=False, now=SESSION)
+        self.assertEqual(pack["prices"], {})
+        self.assertEqual(pack["source"], "no_live_ltp")
+        self.assertEqual(pack["quote_mode"], "upstox")
+        self.assertEqual(pack["yahoo_n"], 0)
 
     def test_missing_yahoo_is_empty_not_tape(self):
         def yfn(_sym):
             return None
 
         with tempfile.TemporaryDirectory() as d, patch.dict(os.environ, {"UPSTOX_ACCESS_TOKEN": ""}):
-            pack = quotes_pack(["NATIONALUM"], data_dir=d, yahoo_fn=yfn, use_cache=False)
+            pack = quotes_pack(["NATIONALUM"], data_dir=d, yahoo_fn=yfn, use_cache=False, now=AFTER)
         self.assertEqual(pack["prices"], {})
         self.assertEqual(pack["source"], "no_live_ltp")
 

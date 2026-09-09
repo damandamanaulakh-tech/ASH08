@@ -70,6 +70,8 @@ class G0ContractTests(unittest.TestCase):
         self.assertEqual(cfg["scanner"]["score_select"], 68.0)
         self.assertEqual(cfg["scanner"]["corr_max"], 0.70)
         self.assertEqual(cfg["sizing"]["mode"], "half_kelly")
+        self.assertEqual(cfg["quotes"]["session"], "upstox_only")
+        self.assertEqual(cfg["quotes"]["after_hours"], "yahoo_only")
         self.assertNotEqual(cfg["scanner"]["score_select"], 67)
         self.assertNotEqual(cfg["scanner"]["score_watch"], 60)
 

@@ -1,5 +1,5 @@
 """ASH08 API. Start: python api.py
-Paper fill needs a live last: Upstox, else Yahoo chart. Never REF_LTP.
+Session last is Upstox. Yahoo last only after hours. Never REF_LTP.
 """
 from __future__ import annotations
 import json, logging, mimetypes, os, sys
@@ -18,7 +18,7 @@ LOG = logging.getLogger("ash08.api")
 DESK = ROOT / "desk"
 PORT = int(os.environ.get("PORT", "10000"))
 DATA_DIR = Path("ash08_data")
-BUILD = "2026-09-10-full-desk"
+BUILD = "2026-09-10-upstox-session"
 REF_LTP = {
     "TCS": 3840.0, "HDFCBANK": 1690.0, "RELIANCE": 2950.0, "INFY": 1850.0,
     "ICICIBANK": 1180.0, "SBIN": 820.0, "ITC": 450.0, "MTARTECH": 1850.0,
@@ -165,14 +165,14 @@ def _clock_pulse():
 def _robot_loop():
     try:
         _clock_pulse()
-        run_robot_tick(force_buy=True)
+        run_robot_tick(force_buy=False)
     except Exception:
         LOG.exception("robot first tick")
     while True:
         time.sleep(45)
         try:
             _clock_pulse()
-            run_robot_tick(force_buy=True)
+            run_robot_tick(force_buy=False)
         except Exception:
             LOG.exception("robot loop")
 
@@ -363,7 +363,7 @@ class Handler(BaseHTTPRequestHandler):
                 "robot": _robot_status(),
                 "ltp": {"source": _LAST_PACK.get("source"), "n": len(_LAST_PACK.get("prices") or {}),
                         "upstox_n": _LAST_PACK.get("upstox_n"), "yahoo_n": _LAST_PACK.get("yahoo_n")},
-                "note": "Paper robot catch-up: buys Today's BUY when a live last exists. Book persists across sleep.",
+                "note": "Paper robot: Upstox last in NSE session, Yahoo last after hours. New buys need the session unless force=1.",
             })
         if path == "/api/quotes":
             syms = [s.strip().upper() for s in ((qs.get("symbols") or [""])[0]).split(",") if s.strip()]
@@ -392,13 +392,22 @@ class Handler(BaseHTTPRequestHandler):
             return self.json(200, refresh_metrics(force=force))
         if path in ("/api/indices", "/api/index"):
             from ash08.indices import fetch_index_tiles
+            from ash08.session import session_state
             ux = upstox_status()
+            sess = session_state()
+            if sess.get("quote_mode") == "yahoo":
+                payload = fetch_index_tiles(lambda _keys: {}, False, after_hours=True)
+                payload["session"] = sess.get("why")
+                payload["quote_mode"] = "yahoo"
+                return self.json(200, payload)
             if "fetch_quotes" not in MODS:
                 payload = fetch_index_tiles(lambda _keys: (_ for _ in ()).throw(RuntimeError("upstox module missing")), False)
                 payload["detail"] = "upstox module missing"
                 return self.json(200, payload)
             payload = fetch_index_tiles(MODS["fetch_quotes"], bool(ux.get("token_set")))
             payload["upstox"] = ux
+            payload["session"] = sess.get("why")
+            payload["quote_mode"] = "upstox"
             return self.json(200, payload)
         if path == "/api/segments":
             from ash08.segments import segment_snapshot
@@ -848,7 +857,7 @@ def main():
     get_engine()
     t = threading.Thread(target=_robot_loop, name="ash08-robot", daemon=True)
     t.start()
-    LOG.info("ASH08 on 0.0.0.0:%s paper=%s seed_pool=%s core=%s upstox=%s robot=on ltp=upstox|yahoo",
+    LOG.info("ASH08 on 0.0.0.0:%s paper=%s seed_pool=%s core=%s upstox=%s robot=on ltp=upstox-session|yahoo-after-hours",
              PORT, "PaperEngine" in MODS, CORE_COUNT, len(core_symbols_live()),
              upstox_status().get("detail"))
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()

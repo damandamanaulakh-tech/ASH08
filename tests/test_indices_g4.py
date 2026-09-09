@@ -57,6 +57,20 @@ class IndicesG4Tests(unittest.TestCase):
         self.assertIsNone(parse_quote_blob({})["ltp"])
         self.assertEqual(parse_quote_blob({"ohlc": {"close": 50}})["ltp"], 50.0)
 
+    def test_after_hours_uses_yahoo_not_upstox(self):
+        def boom(_keys):
+            raise AssertionError("must not call Upstox after hours")
+
+        def yfn(sym):
+            return {"^NSEI": 22410.0, "^BSESN": 73800.0, "^NSEBANK": 48100.0, "^INDIAVIX": 13.4}.get(sym)
+
+        out = fetch_index_tiles(boom, True, after_hours=True, yahoo_index_fn=yfn)
+        self.assertEqual(out["status"], "ok")
+        self.assertEqual(out["detail"], "yahoo_after_hours")
+        by_id = {t["id"]: t for t in out["tiles"]}
+        self.assertEqual(by_id["NIFTY50"]["ltp"], 22410.0)
+        self.assertEqual(by_id["NIFTY50"]["detail"], "yahoo_after_hours")
+
 
 if __name__ == "__main__":
     unittest.main()

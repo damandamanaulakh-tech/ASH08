@@ -138,13 +138,19 @@ def public_config() -> dict:
             "adv_window": ADV_WINDOW,
             "turnover_window": TURNOVER_WINDOW,
             "quality": "coverage of 126 sessions; UNKNOWN if < 60 bars",
-            "ltp": "upstox_only",
+            "ltp": "upstox_session_yahoo_after_hours",
             "missing": "UNKNOWN",
         },
         "indices": {
             "policy_id": INDEX_POLICY_ID,
-            "source": "upstox_only",
+            "source": "upstox_session_yahoo_after_hours",
             "on_error": "failed",
+        },
+        "quotes": {
+            "session": "upstox_only",
+            "after_hours": "yahoo_only",
+            "session_window_ist": "09:15-15:30 Mon-Fri",
+            "tape_close_is_fill": False,
         },
         "segments": {
             "policy_id": SEGMENT_POLICY_ID,
