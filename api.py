@@ -1,6 +1,5 @@
-"""ASH08 API restored baseline. Start: python api.py
-Paper P&L works without Upstox (deterministic paper marks).
-Upstox is optional: live LTP only when Cloudflare allows the host.
+"""ASH08 API. Start: python api.py
+Paper fill needs a live last: Upstox, else Yahoo chart. Never REF_LTP.
 """
 from __future__ import annotations
 import json, logging, mimetypes, os, sys
@@ -19,6 +18,7 @@ LOG = logging.getLogger("ash08.api")
 DESK = ROOT / "desk"
 PORT = int(os.environ.get("PORT", "10000"))
 DATA_DIR = Path("ash08_data")
+BUILD = "2026-09-09-yahoo-ltp"
 REF_LTP = {
     "TCS": 3840.0, "HDFCBANK": 1690.0, "RELIANCE": 2950.0, "INFY": 1850.0,
     "ICICIBANK": 1180.0, "SBIN": 820.0, "ITC": 450.0, "MTARTECH": 1850.0,
@@ -55,6 +55,7 @@ except Exception:
     CORE_SYMBOLS = list(REF_LTP.keys()); CORE_COUNT = len(CORE_SYMBOLS)
 
 _ENGINE = None
+_LAST_PACK = {"prices": {}, "source": "no_live_ltp", "upstox_n": 0, "yahoo_n": 0}
 def get_engine():
     global _ENGINE
     if _ENGINE is not None:
@@ -93,15 +94,19 @@ def upstox_status():
         info["detail"] = f"token set but API failed: {e}"
     return info
 
-def quotes_for_symbols(symbols):
-    if "fetch_quotes" not in MODS or not (os.environ.get("UPSTOX_ACCESS_TOKEN") or "").strip():
-        return {}
+def quotes_pack_for(symbols):
+    global _LAST_PACK
     try:
-        from ash08.upstox_client import ltp_by_symbol
-        return ltp_by_symbol([str(s).upper() for s in (symbols or []) if s], DATA_DIR)
+        from ash08.quotes import quotes_pack
+        pack = quotes_pack([str(s).upper() for s in (symbols or []) if s], DATA_DIR)
     except Exception as e:
         LOG.warning("quotes: %s", e)
-        return {}
+        pack = {"prices": {}, "source": "no_live_ltp", "upstox_n": 0, "yahoo_n": 0, "error": str(e)}
+    _LAST_PACK = pack
+    return pack
+
+def quotes_for_symbols(symbols):
+    return quotes_pack_for(symbols).get("prices") or {}
 
 def auto_buy_from_scan(scan_dict):
     eng = get_engine()
@@ -113,7 +118,8 @@ def auto_buy_from_scan(scan_dict):
     ]
     if not picks:
         return {"bought": 0, "skipped": 0, "open_count": len(eng.open_symbols())}
-    live = quotes_for_symbols([r.get("symbol") for r in picks])
+    pack = quotes_pack_for([r.get("symbol") for r in picks])
+    live = pack.get("prices") or {}
     priced = []
     skipped_px = []
     for r in picks:
@@ -131,6 +137,7 @@ def auto_buy_from_scan(scan_dict):
         LOG.exception("auto_buy")
         return {"error": str(e)}
     result["skipped_no_upstox_ltp"] = skipped_px
+    result["ltp_source"] = pack.get("source")
     return result
 
 
@@ -140,7 +147,7 @@ def run_robot_tick(force_buy=False):
     if not eng:
         return {"ok": False, "error": "paper engine missing", "armed": False}
     try:
-        body = robot_tick(eng, quote_fn=quotes_for_symbols, force_buy=force_buy)
+        body = robot_tick(eng, quote_fn=quotes_pack_for, force_buy=force_buy)
     except Exception as e:
         LOG.exception("robot tick")
         return {"ok": False, "error": str(e), "armed": True}
@@ -157,6 +164,10 @@ def _robot_status():
 
 
 def _robot_loop():
+    try:
+        run_robot_tick(force_buy=False)
+    except Exception:
+        LOG.exception("robot first tick")
     while True:
         time.sleep(45)
         try:
@@ -224,7 +235,8 @@ def scan_core(auto_buy=False):
     from ash08.metrics import build_metrics_for_core
     eng = get_engine()
     opens = list(eng.open_symbols()) if eng else []
-    live = quotes_for_symbols(symbols[:50] + opens)
+    pack = quotes_pack_for(symbols[:50] + opens)
+    live = pack.get("prices") or {}
     metrics = build_metrics_for_core(
         symbols, str(DATA_DIR), quotes=live, open_symbols=opens,
     )
@@ -235,6 +247,7 @@ def scan_core(auto_buy=False):
         "no_synthetic_metrics",
         f"core_count={len(symbols)}",
         f"ltp_live={len(live)}",
+        f"ltp_source={pack.get('source')}",
     ]
     store = MODS["store"]()
     store.save_scan(scan_dict)
@@ -250,7 +263,7 @@ def scan_core(auto_buy=False):
         "auto_paper": auto,
         "upstox": upstox_status(),
         "notes": scan_dict["notes"],
-        "ltp_source": "upstox" if live else "upstox_failed",
+        "ltp_source": pack.get("source") or "no_live_ltp",
     }
 
 
@@ -335,12 +348,24 @@ class Handler(BaseHTTPRequestHandler):
                 "trade_plan": public_config()["trade_plan"],
                 "contract": public_config(),
                 "universe": (_mgr().status() if _mgr() else {}),
-                "build": "2026-09-09-robot",
+                "build": BUILD,
                 "parameter_set_id": public_config()["parameter_set_id"],
                 "advise": advise_n,
                 "robot": _robot_status(),
-                "note": "Paper robot: auto-buy Today's BUY, auto-sell −3/+6/15d. Live LTP only.",
+                "ltp": {"source": _LAST_PACK.get("source"), "n": len(_LAST_PACK.get("prices") or {}),
+                        "upstox_n": _LAST_PACK.get("upstox_n"), "yahoo_n": _LAST_PACK.get("yahoo_n")},
+                "note": "Paper robot: auto-buy Today's BUY, auto-sell −3/+6/15d. Live last = Upstox else Yahoo.",
             })
+        if path == "/api/quotes":
+            syms = [s.strip().upper() for s in ((qs.get("symbols") or [""])[0]).split(",") if s.strip()]
+            if not syms:
+                try:
+                    from ash08.advisory import payload as advise
+                    syms = [r["symbol"] for r in (advise().get("buy") or [])]
+                except Exception:
+                    syms = []
+            pack = quotes_pack_for(syms)
+            return self.json(200, {"ok": True, **pack, "symbols": syms})
         if path == "/api/universe/core":
             core = ensure_core(force=False)
             return self.json(200, core)
@@ -437,6 +462,7 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/api/robot", "/api/robot/status"):
             st = _robot_status()
             st["upstox"] = upstox_status()
+            st["ltp"] = {"source": _LAST_PACK.get("source"), "n": len(_LAST_PACK.get("prices") or {})}
             return self.json(200, st)
         if path in ("/api/history", "/api/history/yoy"):
             from ash08.governor_lock import payload as hist
@@ -457,7 +483,8 @@ class Handler(BaseHTTPRequestHandler):
         if not eng:
             return self.json(500, {"ok": False, "error": "paper engine missing"})
         opens_sym = [p["symbol"] for p in eng.positions if p.get("status") == "OPEN"]
-        live = quotes_for_symbols(opens_sym)
+        pack = quotes_pack_for(opens_sym)
+        live = pack.get("prices") or {}
         if hasattr(eng, "book_payload"):
             book = eng.book_payload(live_prices=live)
         else:
@@ -481,7 +508,7 @@ class Handler(BaseHTTPRequestHandler):
             "exits": ["STOP_HIT", "TARGET_HIT", "MAX_HOLD", "GOVERNOR_CUT", "ROTATION"],
             "size": f"{cfg['max_name_pct']}% book x governor exposure",
         }
-        ltp_source = "upstox" if live else "no_live_ltp"
+        ltp_source = pack.get("source") or ("live" if live else "no_live_ltp")
         return self.json(200, {
             "ok": True, "governor": gov, "plan": plan,
             "orders": book.get("orders") or [], "positions": eng.positions,
@@ -501,7 +528,8 @@ class Handler(BaseHTTPRequestHandler):
             "sell_cost_pct": book.get("sell_cost_pct"),
             "max_open": book.get("max_open"),
             "parameter_set_id": cfg.get("parameter_set_id"),
-            "note": "Cash is tracked. P&L needs live LTP. Missing quote ≠ fake fill.",
+            "build": BUILD,
+            "note": "Cash is tracked. P&L needs live last (Upstox or Yahoo). Missing quote ≠ fake fill.",
         })
 
     def api_pnl_tick(self):
@@ -509,7 +537,8 @@ class Handler(BaseHTTPRequestHandler):
         if not eng:
             return self.json(500, {"ok": False, "error": "paper engine missing"})
         opens_sym = [p["symbol"] for p in eng.positions if p.get("status") == "OPEN"]
-        live = quotes_for_symbols(opens_sym)
+        pack = quotes_pack_for(opens_sym)
+        live = pack.get("prices") or {}
         if hasattr(eng, "book_payload"):
             book = eng.book_payload(live_prices=live)
         else:
@@ -518,7 +547,7 @@ class Handler(BaseHTTPRequestHandler):
             book = {"unrealized_pnl": 0, "realized_pnl": 0, "total_pnl": 0, "open": [], "open_count": 0}
         return self.json(200, {
             "ok": True,
-            "ltp_source": "upstox" if live else "no_live_ltp",
+            "ltp_source": pack.get("source") or ("live" if live else "no_live_ltp"),
             "unrealized_pnl": book.get("unrealized_pnl") or 0,
             "realized_pnl": book.get("realized_pnl") or 0,
             "total_pnl": book.get("total_pnl") or 0,
@@ -609,7 +638,7 @@ def main():
     get_engine()
     t = threading.Thread(target=_robot_loop, name="ash08-robot", daemon=True)
     t.start()
-    LOG.info("ASH08 on 0.0.0.0:%s paper=%s seed_pool=%s core=%s upstox=%s robot=on",
+    LOG.info("ASH08 on 0.0.0.0:%s paper=%s seed_pool=%s core=%s upstox=%s robot=on ltp=upstox|yahoo",
              PORT, "PaperEngine" in MODS, CORE_COUNT, len(core_symbols_live()),
              upstox_status().get("detail"))
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()

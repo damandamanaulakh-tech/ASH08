@@ -33,7 +33,7 @@ class RobotTests(unittest.TestCase):
 
             body = tick(eng, quote_fn=qfn, force_buy=True)
             self.assertGreaterEqual(body["bought"], 1)
-            self.assertEqual(body["ltp_source"], "upstox")
+            self.assertIn(body["ltp_source"], ("live", "upstox", "yahoo"))
             opens = [p for p in eng.positions if p.get("status") == "OPEN"]
             self.assertGreaterEqual(len(opens), 1)
             p = opens[0]
@@ -42,6 +42,24 @@ class RobotTests(unittest.TestCase):
             self.assertAlmostEqual(p["target"], round(entry * 1.06, 2), places=2)
             self.assertEqual(p["hold_days"], 15)
             self.assertLess(eng.cash, 50_000_000)
+
+    def test_yahoo_pack_fills_at_yahoo_last_not_tape(self):
+        with tempfile.TemporaryDirectory() as d:
+            eng = PaperEngine(d, book_value=50_000_000)
+            buys = advise()["buy"]
+            yahoo = {r["symbol"]: round(float(r["close"]) * 0.9, 2) for r in buys}
+
+            def qfn(_syms):
+                return {"prices": yahoo, "source": "yahoo"}
+
+            body = tick(eng, quote_fn=qfn, force_buy=True)
+            self.assertGreaterEqual(body["bought"], 1)
+            self.assertEqual(body["ltp_source"], "yahoo")
+            opens = [p for p in eng.positions if p.get("status") == "OPEN"]
+            self.assertGreaterEqual(len(opens), 1)
+            p = opens[0]
+            self.assertAlmostEqual(p["entry"], yahoo[p["symbol"]])
+            self.assertNotAlmostEqual(p["entry"], next(r["close"] for r in buys if r["symbol"] == p["symbol"]))
 
     def test_stop_sells_on_live_ltp(self):
         with tempfile.TemporaryDirectory() as d:

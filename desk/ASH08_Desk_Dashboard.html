@@ -78,6 +78,7 @@ table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:9px 10px;
 <span class="pill on" id="robot-pill">ROBOT</span>
 <span class="pill live">MARKET</span>
 <span class="pill" id="upx-pill">Upstox</span>
+<span class="pill" id="ltp-pill">LTP</span>
 <span class="pill" id="gov-pill">Gov L0</span>
 </div>
 <div style="display:flex;gap:8px">
@@ -107,7 +108,7 @@ table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:9px 10px;
 <main>
 <section class="view active" id="view-home">
 <div class="banner">
-<div><strong>Paper robot is on.</strong> Buys today's BUY names. Sells itself on −3% stop / +6% target / 15d hold. Live LTP only — no invented fill.</div>
+<div><strong>Paper robot is on.</strong> Buys today's BUY names. Sells itself on −3% stop / +6% target / 15d hold. Live last = Upstox, else Yahoo chart. Never a made-up mark.</div>
 <div class="muted">Tape as-of <b id="adv-asof">—</b> · FII as-of <b id="adv-fii-asof">—</b> · robot <b id="robot-line">waiting first tick</b></div>
 </div>
 <div class="kpis6">
@@ -524,10 +525,11 @@ if(d.equity!=null){const e=inr(d.equity);['plan-eq','home-eq'].forEach(id=>{cons
 if(d.max_open!=null){const el=document.getElementById('plan-maxopen');if(el)el.textContent=d.max_open;}
 
 if(d.upstox){const el=document.getElementById('upx-pill');if(el)el.textContent=d.upstox.connected?'Upstox OK':(d.upstox.token_set?'Upstox token':'Upstox off');}
+const lp=document.getElementById('ltp-pill');if(lp)lp.textContent='LTP '+(d.ltp_source||'—');
 if(d.plan){if(d.plan.stop_pct!=null)document.getElementById('plan-stop').textContent='-'+d.plan.stop_pct+'%';if(d.plan.target_pct!=null)document.getElementById('plan-target').textContent='+'+d.plan.target_pct+'%';if(d.plan.max_hold_days!=null)document.getElementById('plan-hold').textContent=d.plan.max_hold_days+'d';}
 if(d.governor){const lvl=(d.governor.level||'L0').split('_')[0];document.getElementById('kpi-gov').textContent=lvl;document.getElementById('gov-level').textContent=d.governor.level||'L0';document.getElementById('gov-pill').textContent='Gov '+lvl;const exp=d.governor.exposure_pct!=null?d.governor.exposure_pct:100;document.getElementById('gov-exp').textContent=exp+'%';document.getElementById('gov-bar').style.width=exp+'%';}
 const opens=d.open||[];const posBody=document.getElementById('pos-body');const homePos=document.getElementById('home-pos');
-if(!opens.length){posBody.innerHTML='<tr><td colspan="9" class="muted" style="text-align:center;padding:18px">No open — robot buys when live LTP is present</td></tr>';homePos.innerHTML='<tr><td colspan="3" class="muted" style="text-align:center;padding:16px">No opens</td></tr>';}
+if(!opens.length){posBody.innerHTML='<tr><td colspan="9" class="muted" style="text-align:center;padding:18px">No open — robot buys on live last (Upstox or Yahoo)</td></tr>';homePos.innerHTML='<tr><td colspan="3" class="muted" style="text-align:center;padding:16px">No opens</td></tr>';}
 else{posBody.innerHTML=opens.map(p=>{const pnl=p.pnl_label||(p.pnl!=null?((p.pnl>=0?'+':'')+p.pnl):'—');const col=(p.pnl!=null&&p.pnl<0)?'dn':'up';return '<tr><td><strong>'+p.symbol+'</strong></td><td>'+p.qty+'</td><td>'+p.entry+'</td><td>'+(p.ltp!=null?p.ltp:'—')+'</td><td class="'+col+'">'+pnl+'</td><td>'+(p.stop!=null?p.stop:'—')+'</td><td>'+(p.target!=null?p.target:'—')+'</td><td>'+(p.days_left!=null?p.days_left+'d':'—')+'</td><td><span class="tag open">'+(p.status||'OPEN')+'</span></td></tr>';}).join('');
 homePos.innerHTML=opens.slice(0,6).map(p=>{const pnl=p.pnl!=null?((p.pnl>=0?'+':'')+p.pnl):'—';const col=(p.pnl!=null&&p.pnl<0)?'dn':'up';return '<tr><td><strong>'+p.symbol+'</strong></td><td>'+(p.ltp!=null?p.ltp:'—')+'</td><td class="'+col+'">'+pnl+'</td></tr>';}).join('');}
 const orders=d.orders||[];const ordBody=document.getElementById('ord-body');
@@ -548,6 +550,8 @@ async function paintRobot(d){
   }
   const ft=document.getElementById('ft-robot');
   if(ft) ft.textContent='Robot bought '+(d.bought||0)+' sold '+(d.sold||0);
+  const lp=document.getElementById('ltp-pill');
+  if(lp && d.ltp_source) lp.textContent='LTP '+d.ltp_source;
 }
 async function loadRobot(){
   try{

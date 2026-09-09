@@ -1,13 +1,13 @@
 """Paper robot. Buys Today's Advice. Sells on −3 / +6 / 15d.
 
-Paper only. Live Upstox LTP or skip. Never invents a fill.
+Paper only. Live last (Upstox, else Yahoo chart) or skip. Never invents a fill.
 """
 from __future__ import annotations
 
 import logging
 import threading
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Union
 from zoneinfo import ZoneInfo
 
 from ash08.advisory import payload as advise_payload
@@ -15,7 +15,7 @@ from ash08.advisory import payload as advise_payload
 LOG = logging.getLogger("ash08.robot")
 IST = ZoneInfo("Asia/Kolkata")
 
-QuoteFn = Callable[[List[str]], Dict[str, float]]
+QuoteFn = Callable[[List[str]], Union[Dict[str, float], Dict[str, Any]]]
 
 _LOCK = threading.Lock()
 _LAST: Dict[str, Any] = {
@@ -33,7 +33,7 @@ _LAST: Dict[str, Any] = {
     "buy_symbols": [],
     "sold_detail": [],
     "skipped_detail": [],
-    "note": "Paper robot. BUY names auto-fill on live LTP. Exits −3% / +6% / 15d. No fake mark.",
+    "note": "Paper robot. BUY names auto-fill on live last (Upstox or Yahoo). Exits −3% / +6% / 15d. No fake mark.",
 }
 
 
@@ -70,6 +70,27 @@ def _rows_for_engine(buys: List[dict], live: Dict[str, float]) -> List[dict]:
     return out
 
 
+def _parse_quotes(raw: Any) -> tuple[Dict[str, float], Optional[str]]:
+    if not raw or not isinstance(raw, dict):
+        return {}, None
+    source = None
+    prices = raw
+    if "prices" in raw and isinstance(raw.get("prices"), dict):
+        source = raw.get("source")
+        prices = raw.get("prices") or {}
+    live: Dict[str, float] = {}
+    for k, v in prices.items():
+        if str(k).lower() in ("prices", "source", "upstox_n", "yahoo_n", "cached"):
+            continue
+        try:
+            px = float(v)
+        except (TypeError, ValueError):
+            continue
+        if px > 0:
+            live[str(k).upper()] = px
+    return live, str(source) if source else None
+
+
 def tick(
     engine,
     quote_fn: Optional[QuoteFn] = None,
@@ -78,7 +99,7 @@ def tick(
 ) -> Dict[str, Any]:
     """One cycle: mark opens (sell rails), then buy today's BUY names.
 
-    quote_fn(symbols) -> {SYM: ltp}. Missing name = no fill / no exit this tick.
+    quote_fn(symbols) -> {SYM: ltp} or {prices, source}. Missing name = no fill / no exit this tick.
     """
     sess = session_now(now)
     advise = advise_payload()
@@ -87,16 +108,10 @@ def tick(
     opens = [str(p.get("symbol") or "").upper() for p in engine.positions if p.get("status") == "OPEN"]
     want = list(dict.fromkeys(buy_syms + opens))
     live: Dict[str, float] = {}
+    pack_source: Optional[str] = None
     if quote_fn and want:
         try:
-            raw = quote_fn(want) or {}
-            for k, v in raw.items():
-                try:
-                    px = float(v)
-                except (TypeError, ValueError):
-                    continue
-                if px > 0:
-                    live[str(k).upper()] = px
+            live, pack_source = _parse_quotes(quote_fn(want) or {})
         except Exception as e:
             LOG.warning("robot quotes: %s", e)
 
@@ -137,7 +152,7 @@ def tick(
     elif not allow_buy:
         buy_result["skipped_detail"] = [{"symbol": "*", "reason": "outside_buy_window"}]
 
-    ltp_source = "upstox" if live else "no_live_ltp"
+    ltp_source = (pack_source or "live") if live else "no_live_ltp"
     body = {
         "ok": True,
         "armed": True,
@@ -158,7 +173,17 @@ def tick(
         "ltp_n": len(live),
         "ltp_source": ltp_source,
         "force_buy": force_buy,
-        "note": "Paper. Auto-buy Today's BUY. Auto-sell −3% / +6% / 15d. Live LTP only.",
+        "fills": [
+            {
+                "symbol": o.get("symbol"),
+                "qty": o.get("sized_qty") or o.get("qty"),
+                "fill_price": o.get("fill_price"),
+                "stop": o.get("stop"),
+                "target": o.get("target"),
+            }
+            for o in (buy_result.get("orders") or [])
+        ],
+        "note": "Paper. Auto-buy Today's BUY. Auto-sell −3% / +6% / 15d. Live last only (Upstox or Yahoo).",
     }
     with _LOCK:
         _LAST.update(body)
