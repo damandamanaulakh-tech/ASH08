@@ -3,7 +3,7 @@
 ASH08 is a paper-only NSE desk. Own repo. Not AshStocks. Not AM07.
 Render deploys **this** repo (`damandamanaulakh-tech/ASH08`).
 
-ASH08 is the **full paper desk** — bigger than AM07 — on **ASH08 numbers only** (₹5 Cr, ½-Kelly, SELECT 68, −3 / +6 / 15d).
+ASH08 is the **full paper desk** — bigger than AM07 — on **ASH08 numbers** (₹5 Cr, ½-Kelly, File 3 SELECT **62–70** above 200 DMA, −3 / +6 / 15d).
 
 It runs the AM07-style day (09:20 scan, 14:30 top-up, 15:25 square-off + expire limits, 15:35 mark) **and** the 45s catch-up robot. Pages are jobs: dashboard, scan, why, piano, register, triggers, ticket, open, closed, shadow book, risk, alerts, engine/clock, strategy, reports, YoY, factors, universe, segments, settings.
 
@@ -24,7 +24,7 @@ Paper only. **NSE session last is Upstox only. Yahoo last only after hours.** Ta
 
 Manual: `/api/robot/tick?force=1`. Clock status: `/api/engine`.
 
-AM07 was the pattern (robot picker + journal). ASH08 numbers stay: ₹5 Cr, Kelly, SELECT 68, −3 / +6 / 15d. Not AM07's ₹50L / ₹1.25L / −5 / +20.
+AM07 was the pattern (robot picker + journal). Paper capital stays ₹5 Cr. SELECT is the File 3 band: **62–70 above 200 DMA**, size ×0.50 at **70+**. Score is vol-adj 6M+12M, not 6M-only 50+200m. Rails stay −3 / +6 / 15d (risk rails, not a 1-month forecast). Not AM07's ₹50L / ₹1.25L / −5 / +20.
 
 ROC20 / vol / breakout still gate Today's Advice (`CHITTY_GATES_ON`). The 31-name telemetry registry stays `decision_impact=False`.
 
@@ -33,8 +33,11 @@ ROC20 / vol / breakout still gate Today's Advice (`CHITTY_GATES_ON`). The 31-nam
 | Item | Value |
 |------|--------|
 | Book | ₹5,00,00,000 (5 Cr) |
-| SELECT / BUY | score ≥ **68** (68–70 is full BUY, near-miss ledger only) |
-| WATCH | **55** ≤ score < 68 |
+| SELECT / BUY | **62 ≤ score < 70** and close **above 200 DMA** (File 3 BUY band) |
+| 70+ | still SELECT if above 200 DMA, **size × 0.50** (12m median worse than 62–70) |
+| Below 200 DMA | **no SELECT**, whatever the score |
+| WATCH | **55** ≤ score < 62 |
+| Score | `0.65 × clip(50+25×vol_adj) + 0.35 × (low-vol + ADV20 liquidity)` — never quality=100 coverage |
 | Rank | M1 6m+12m vol-adj, M6 N = **25** |
 | Size | ½-Kelly (IC 0.05 assumed, cap 5% of book, floor 67) |
 | FII | size throttle only, not SELECT |
@@ -74,7 +77,7 @@ ROC20 / vol / breakout still gate Today's Advice (`CHITTY_GATES_ON`). The 31-nam
 | `/api/reports` `/api/risk` `/api/alerts` | Closed-trade reports, live risk, journal alerts |
 | `/api/register` `/api/triggers` `/api/shadow` | Selection register, Chitty/T gates, opportunity-cost book |
 | `/api/engine` `/api/schedule` `/api/settings` | IST clock, last jobs, locked formula |
-| `/api/health` | `build=2026-09-10-desk-honest` |
+| `/api/health` | `build=2026-09-11-file3-62` |
 
 ## Run
 

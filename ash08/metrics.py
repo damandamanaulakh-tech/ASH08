@@ -11,17 +11,48 @@ from ash08.config import (
     METRICS_POLICY_ID,
     MOM_LOOKBACK_CAL_DAYS,
     MOM_MIN_SPAN_DAYS,
-    QUALITY_MIN_SESSIONS,
-    QUALITY_TARGET_SESSIONS,
     TURNOVER_WINDOW,
 )
 from ash08.history import HistoryStore, normalize_bars
 from ash08.scanner import StockMetrics
+from ash08.score import quality_from_tape
 from ash08.sizing import annual_vol
 
 
 def _date(s: str):
     return datetime.fromisoformat(s[:10]).date()
+
+
+def _vol_adj(closes: Sequence[float]) -> Optional[float]:
+    n = len(closes)
+    if n < 253:
+        return None
+    last = float(closes[-1])
+    p6 = float(closes[-127])
+    p12 = float(closes[-253])
+    if last <= 0 or p6 <= 0 or p12 <= 0:
+        return None
+    r6 = last / p6 - 1.0
+    r12 = last / p12 - 1.0
+
+    def ann(window: int) -> Optional[float]:
+        sl = [float(x) for x in closes[-window:]]
+        rets = []
+        for i in range(1, len(sl)):
+            if sl[i - 1] > 0:
+                rets.append(sl[i] / sl[i - 1] - 1.0)
+        if len(rets) < 20:
+            return None
+        mean = sum(rets) / len(rets)
+        var = sum((x - mean) ** 2 for x in rets) / (len(rets) - 1)
+        if var <= 0:
+            return None
+        return math.sqrt(var) * math.sqrt(252)
+
+    v6, v12 = ann(126), ann(252)
+    if not v6 or not v12:
+        return None
+    return (r6 / v6 + r12 / v12) / 2.0
 
 
 def _pearson(xs: Sequence[float], ys: Sequence[float]) -> Optional[float]:
@@ -84,10 +115,10 @@ def metrics_from_bars(
         if span >= MOM_MIN_SPAN_DAYS and float(window[0]["close"]) > 0:
             mom = float(window[-1]["close"]) / float(window[0]["close"]) - 1.0
 
-    quality = None
-    n = len(rows)
-    if n >= QUALITY_MIN_SESSIONS:
-        quality = max(0.0, min(100.0, 100.0 * n / QUALITY_TARGET_SESSIONS))
+    closes = [float(r["close"]) for r in rows]
+    sigma = annual_vol(closes)
+    quality = quality_from_tape(sigma, adv20)
+    vol_adj = _vol_adj(closes)
 
     max_corr = None
     corr_applicable = True
@@ -113,9 +144,6 @@ def metrics_from_bars(
         else:
             corr_applicable = False
 
-    closes = [float(r["close"]) for r in rows]
-    sigma = annual_vol(closes)
-
     m = StockMetrics(
         symbol=symbol.upper(),
         adv20=adv20,
@@ -126,6 +154,7 @@ def metrics_from_bars(
         max_corr_vs_book=0.0 if not corr_applicable else max_corr,
         ltp=ltp,
         vol_sigma=sigma,
+        vol_adj=vol_adj,
     )
     return m
 

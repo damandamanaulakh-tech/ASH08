@@ -18,7 +18,7 @@ class FullDeskTests(unittest.TestCase):
         self.assertEqual(TARGET_PCT, 6.0)
         rows = {r["id"]: r for r in strategy()["rows"]}
         self.assertIn("5", rows["BOOK"]["value"].replace(",", "") or "50000000")
-        self.assertIn("68", rows["SELECT"]["value"])
+        self.assertIn("62", rows["SELECT"]["value"])
 
     def test_weekday_morning_is_due_once(self):
         wed = datetime(2026, 9, 9, 9, 22)  # IST naive

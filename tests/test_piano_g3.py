@@ -24,8 +24,8 @@ class PianoG3Tests(unittest.TestCase):
 
     def test_splits_pass_fail_unknown(self):
         rows = [
-            evaluate_stock(StockMetrics("OK", 800_000, 25, 1, 0.18, 75, 0.4)).to_dict(),
-            evaluate_stock(StockMetrics("THIN", 50_000, 25, 1, 0.18, 75, 0.4)).to_dict(),
+            evaluate_stock(StockMetrics("OK", 800_000, 25, 1, 0.18, 75, 0.4, vol_adj=1.28)).to_dict(),
+            evaluate_stock(StockMetrics("THIN", 50_000, 25, 1, 0.18, 75, 0.4, vol_adj=1.28)).to_dict(),
             evaluate_stock(StockMetrics("GAP")).to_dict(),
         ]
         scan = {"rows": rows, "asof": "2026-09-08T00:00:00Z"}
@@ -46,7 +46,7 @@ class PianoG3Tests(unittest.TestCase):
             self.assertIn(pid, hits)
 
     def test_gov_is_not_a_name_gate(self):
-        snap = run_scan([StockMetrics("OK", 800_000, 25, 1, 0.18, 75, 0.4)])
+        snap = run_scan([StockMetrics("OK", 800_000, 25, 1, 0.18, 75, 0.4, vol_adj=1.28)])
         out = piano_from_scan(snap.to_dict(), "P-GOV", governor={"level": "L0"})
         self.assertEqual(out["passed"], [])
         self.assertEqual(out["governor"]["level"], "L0")

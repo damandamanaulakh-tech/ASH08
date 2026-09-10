@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PARAMETER_SET_ID = "ash08-5cr-kelly-v1"
+PARAMETER_SET_ID = "ash08-5cr-file3-v1"
 
 # --- locked. do not env-override (old Render env had 67/60) ---
 BOOK_VALUE = 50_000_000.0  # ₹5 Cr
@@ -27,17 +27,21 @@ TURNOVER_CR_MIN = 5.0
 STALE_MAX_DAYS = 7.0
 MOM_MIN = 0.0
 CORR_MAX = 0.70
-SCORE_SELECT = 68.0  # near-miss is full SELECT
-SCORE_NEAR_MISS = 68.0  # ledger: 68 ≤ score < 70 still tagged
+# File 3 (22,749 obs): BUY band is 62–70 above 200 DMA. 70+ 12m median is worse.
+# Below 200 DMA is a hard veto, whatever the score. Not the old 6M-only 50+200m ≥68.
+SCORE_SELECT = 62.0
+SCORE_SELECT_HIGH = 70.0  # SELECT with size × HIGH_SCORE_SIZE_MULT
+SCORE_NEAR_MISS = 62.0  # ledger: 62 ≤ score < 70 is the File 3 BUY band
 SCORE_WATCH = 55.0
 MOM_WEIGHT = 0.65
 QUAL_WEIGHT = 0.35
+HIGH_SCORE_SIZE_MULT = 0.5  # File 3: 70+ above DMA underperforms 62–70
 
-# ½-Kelly (AM07 formula). IC assumed 0.05. Floor 67 so SELECT 68 has edge.
+# ½-Kelly (AM07 formula). IC assumed 0.05. Floor 61 so SELECT 62 has edge.
 KELLY_FRACTION = 0.5
 KELLY_IC = 0.05
 KELLY_MAX_PCT = 0.05
-KELLY_FLOOR = 67.0
+KELLY_FLOOR = 61.0
 KELLY_MIN_NOTIONAL = 25_000.0
 KELLY_VOL_WINDOW = 63
 
@@ -120,10 +124,14 @@ def public_config() -> dict:
             "mom_min": MOM_MIN,
             "corr_max": CORR_MAX,
             "score_select": SCORE_SELECT,
+            "score_select_high": SCORE_SELECT_HIGH,
             "score_near_miss": SCORE_NEAR_MISS,
             "score_watch": SCORE_WATCH,
             "mom_weight": MOM_WEIGHT,
             "quality_weight": QUAL_WEIGHT,
+            "high_score_size_mult": HIGH_SCORE_SIZE_MULT,
+            "score_formula": "0.65*clip(50+25*vol_adj)+0.35*quality(low_vol,adv20)",
+            "below_200dma": "no_select",
         },
         "universe": {
             "policy_id": UNIVERSE_POLICY_ID,
@@ -137,7 +145,7 @@ def public_config() -> dict:
             "mom_lookback_cal_days": MOM_LOOKBACK_CAL_DAYS,
             "adv_window": ADV_WINDOW,
             "turnover_window": TURNOVER_WINDOW,
-            "quality": "coverage of 126 sessions; UNKNOWN if < 60 bars",
+            "quality": "low-vol + ADV20 liquidity; UNKNOWN if sigma or adv20 missing — not coverage-100",
             "ltp": "upstox_session_yahoo_after_hours",
             "missing": "UNKNOWN",
         },

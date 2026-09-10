@@ -23,6 +23,7 @@ from ash08.config import (
     PARAMETER_SET_ID,
     QUAL_WEIGHT,
     SCORE_SELECT,
+    SCORE_SELECT_HIGH,
     SCORE_WATCH,
     SELL_COST_PCT,
     STOP_PCT,
@@ -169,7 +170,7 @@ def strategy() -> dict:
         "rows": [
             {"id": "BOOK", "item": "Paper capital", "value": f"₹{BOOK_VALUE:,.0f}", "note": "ASH08 lock — not AM07 ₹50L"},
             {"id": "KELLY", "item": "Sizing", "value": f"{KELLY_FRACTION}× Kelly · IC {KELLY_IC} · cap {KELLY_MAX_PCT*100:.0f}%", "note": "Locked"},
-            {"id": "SELECT", "item": "SELECT / BUY floor", "value": str(SCORE_SELECT), "note": "WATCH " + str(SCORE_WATCH)},
+            {"id": "SELECT", "item": "SELECT / BUY floor", "value": str(SCORE_SELECT), "note": "File 3 BUY band " + str(SCORE_SELECT) + "–" + str(SCORE_SELECT_HIGH) + " above 200 DMA; ≥" + str(SCORE_SELECT_HIGH) + " size ×0.50. WATCH " + str(SCORE_WATCH)},
             {"id": "RAILS", "item": "Stop / target / hold", "value": f"−{STOP_PCT}% / +{TARGET_PCT}% / {MAX_HOLD_SESSIONS}d", "note": "Not AM07 −5 / +20 / 200d"},
             {"id": "M1", "item": "Rank", "value": f"6m+12m vol-adj · mom {MOM_WEIGHT} / qual {QUAL_WEIGHT}", "note": "Today's Advice"},
             {"id": "FII", "item": "FII", "value": "Size throttle only", "note": "Never a SELECT veto"},

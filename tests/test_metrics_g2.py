@@ -58,12 +58,17 @@ class MetricsG2Tests(unittest.TestCase):
         self.assertIsNotNone(m.quality_score)
         self.assertIsNone(m.ltp)
         row = evaluate_stock(m)
-        self.assertIn(row.decision, ("SELECT", "WATCH", "REJECT"))
-        self.assertNotEqual(row.decision, "UNKNOWN")
         ids = {h.param_id: h for h in row.hits}
         self.assertIn("P-ADV20", ids)
         self.assertTrue(ids["P-ADV20"].passed)
         self.assertIn("adv20=", ids["P-ADV20"].detail)
+        # 140 bars cannot prove 12M vol-adj — File 3 score stays UNKNOWN
+        self.assertEqual(row.decision, "UNKNOWN")
+        long_m = metrics_from_bars("TCS", make_bars(260, start=100.0, volume=400_000), ltp=None)
+        self.assertIsNotNone(long_m.vol_adj)
+        long_row = evaluate_stock(long_m)
+        self.assertIn(long_row.decision, ("SELECT", "WATCH", "REJECT"))
+        self.assertNotEqual(long_row.decision, "UNKNOWN")
 
     def test_cache_roundtrip(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -75,7 +80,7 @@ class MetricsG2Tests(unittest.TestCase):
             self.assertEqual(loaded[0]["date"], normalize_bars(bars)[0]["date"])
 
     def test_empty_book_corr_zero_not_unknown_if_other_fields_ok(self):
-        m = metrics_from_bars("TCS", make_bars(140))
+        m = metrics_from_bars("TCS", make_bars(260))
         self.assertEqual(m.max_corr_vs_book, 0.0)
         row = evaluate_stock(m)
         self.assertNotEqual(row.decision, "UNKNOWN")

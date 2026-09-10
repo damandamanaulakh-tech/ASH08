@@ -13,14 +13,13 @@ from ash08.config import (
     ADV20_MIN,
     CORR_MAX,
     MOM_MIN,
-    MOM_WEIGHT,
-    QUAL_WEIGHT,
-    SCORE_NEAR_MISS,
     SCORE_SELECT,
+    SCORE_SELECT_HIGH,
     SCORE_WATCH,
     STALE_MAX_DAYS,
     TURNOVER_CR_MIN,
 )
+from ash08.score import blend_score, compute_score, momentum_score
 from ash08.orders import load_order_map, signal_for
 
 LOG = logging.getLogger("ash08.scanner")
@@ -39,6 +38,7 @@ class StockMetrics:
     ltp: Optional[float] = None
     order_signal: Optional[str] = None
     vol_sigma: Optional[float] = None
+    vol_adj: Optional[float] = None
 
 
 @dataclass
@@ -88,13 +88,15 @@ def _utc_now_iso() -> str:
 
 
 def mom_return_to_score(m: float) -> float:
+    """Kept for G0 import sites. Not the SELECT score — that is vol_adj."""
     return max(0.0, min(100.0, 50.0 + m * 200.0))
 
 
-def compute_final_score(mom_6m, quality_score):
-    mom_s = 50.0 if mom_6m is None else mom_return_to_score(mom_6m)
-    qual = 50.0 if quality_score is None else max(0.0, min(100.0, float(quality_score)))
-    return round(MOM_WEIGHT * mom_s + QUAL_WEIGHT * qual, 2)
+def compute_final_score(vol_adj, quality_score):
+    """File 3 blend. First arg is vol_adj raw, not 6M return."""
+    mom_s = momentum_score(vol_adj)
+    scored = blend_score(mom_s, quality_score)
+    return 0.0 if scored is None else scored
 
 
 MANDATORY = ("adv20", "turnover_cr_5d", "stale_days", "mom_6m", "quality_score")
@@ -146,16 +148,18 @@ def evaluate_stock(m: StockMetrics) -> ScanRow:
     if m.quality_score is None:
         unknown_fields.append("quality_score")
 
-    score_ready = m.mom_6m is not None and m.quality_score is not None
-    score = compute_final_score(m.mom_6m, m.quality_score) if score_ready else 0.0
+    score = compute_score(m.vol_adj, m.vol_sigma, m.adv20, quality=m.quality_score)
+    score_ready = score is not None
     if score_ready:
-        add("P-SCORE", "PASS", f"score={score}")
+        add("P-SCORE", "PASS", f"score={score} vol_adj={m.vol_adj}")
     else:
-        add("P-SCORE", "UNKNOWN", "UNKNOWN score (mom or quality missing)")
+        add("P-SCORE", "UNKNOWN", "UNKNOWN score (need vol_adj and measured quality)")
 
     hard = all(v is True for v in (adv_ok, t_ok, s_ok, mom_ok, c_ok)) and not o_block
     coverage = round(sum(1 for v in (adv_ok, t_ok, s_ok, mom_ok, c_ok) if v is not None) / 5.0, 2)
 
+    if score is None:
+        unknown_fields.append("vol_adj")
     if unknown_fields:
         decision, reason = "UNKNOWN", "missing " + ",".join(unknown_fields)
         hard = False
@@ -168,10 +172,12 @@ def evaluate_stock(m: StockMetrics) -> ScanRow:
     else:
         decision, reason = "REJECT", "hard fail or low score"
 
-    if score_ready and SCORE_NEAR_MISS <= score < 70.0:
-        add("P-NEAR_MISS", "PASS", f"score {score} in 68–70 ledger (full SELECT)")
+    if score_ready and SCORE_SELECT <= score < SCORE_SELECT_HIGH:
+        add("P-NEAR_MISS", "PASS", f"score {score} in File 3 BUY band [{SCORE_SELECT:g},{SCORE_SELECT_HIGH:g})")
+    elif score_ready and score >= SCORE_SELECT_HIGH:
+        add("P-NEAR_MISS", "FAIL", f"score {score} ≥ {SCORE_SELECT_HIGH:g} size-down band")
     elif score_ready:
-        add("P-NEAR_MISS", "FAIL", f"score {score} outside 68–70 ledger")
+        add("P-NEAR_MISS", "FAIL", f"score {score} below BUY band {SCORE_SELECT:g}")
     else:
         add("P-NEAR_MISS", "UNKNOWN", reason)
 
@@ -185,7 +191,7 @@ def evaluate_stock(m: StockMetrics) -> ScanRow:
     return ScanRow(
         symbol=m.symbol,
         decision=decision,
-        score=score,
+        score=0.0 if score is None else score,
         segment=m.segment,
         ltp=m.ltp,
         reason=reason,
@@ -209,7 +215,7 @@ def run_scan(
     rank = {"SELECT": 0, "WATCH": 1, "UNKNOWN": 2, "REJECT": 3}
     rows_sorted = sorted(
         filled,
-        key=lambda r: (rank.get(r.decision, 9), -r.score, r.symbol),
+        key=lambda r: (rank.get(r.decision, 9), -(r.score or 0.0), r.symbol),
     )
     return ScanSnapshot(
         asof=_utc_now_iso(),
@@ -221,12 +227,12 @@ def run_scan(
         unknown_count=sum(1 for r in rows_sorted if r.decision == "UNKNOWN"),
         near_miss_count=sum(
             1 for r in rows_sorted
-            if r.decision == "SELECT" and SCORE_NEAR_MISS <= r.score < 70.0
+            if r.decision == "SELECT" and SCORE_SELECT <= (r.score or 0) < SCORE_SELECT_HIGH
         ),
         rows=[r.to_dict() for r in rows_sorted],
         notes=[
             f"SCORE_SELECT={SCORE_SELECT}",
-            f"SCORE_NEAR_MISS={SCORE_NEAR_MISS}",
+            f"SCORE_SELECT_HIGH={SCORE_SELECT_HIGH}",
             f"SCORE_WATCH={SCORE_WATCH}",
             f"CORR_MAX={CORR_MAX}",
             "missing_metrics=UNKNOWN",

@@ -36,6 +36,7 @@ class AdvisoryTests(unittest.TestCase):
         self.assertGreaterEqual(len(self.body["buy"]), 1)
         for r in self.body["buy"]:
             self.assertGreaterEqual(r["score"], SCORE_SELECT, r["symbol"])
+            self.assertTrue(r.get("sma200") is None or r["close"] > r["sma200"] or r.get("ocean_mixed"), r["symbol"])
             self.assertIsNotNone(r["stop"])
             self.assertIsNotNone(r["target"])
             self.assertGreater(r["notional"], 0)
@@ -132,6 +133,37 @@ class AdvisoryTests(unittest.TestCase):
         by_fail = {s["id"]: s for s in fail["steps"]}
         self.assertEqual(by_fail["P-CORR"]["status"], "FAIL")
         self.assertEqual(fail["action"], out["action"])
+
+    def test_file3_below_200_cannot_buy(self):
+        row = dict(_name_row())
+        row["above200"] = False
+        out = evaluate_name(row, _ok_market(), 1.0, "full")
+        self.assertNotEqual(out["action"], "BUY")
+        self.assertIn("200", out["why"])
+
+    def test_file3_high_score_sizes_down(self):
+        base = dict(_name_row())
+        base["sigma"] = 0.12
+        base["adv20"] = 2_000_000
+        high = dict(base)
+        high["vol_adj"] = 2.5
+        mid = dict(base)
+        mid["vol_adj"] = 0.2
+        hi = evaluate_name(high, _ok_market(), 1.0, "full")
+        md = evaluate_name(mid, _ok_market(), 1.0, "full")
+        self.assertEqual(hi["action"], "BUY")
+        self.assertTrue(hi.get("high_score"))
+        self.assertEqual(md["action"], "BUY")
+        self.assertFalse(md.get("high_score"))
+        self.assertLess(hi["notional"], md["notional"])
+
+    def test_file3_score_is_vol_adj_not_six_month_map(self):
+        from ash08.score import compute_score, momentum_score
+        # +1.5% 6M through 50+200m with quality=100 is 69.5 — that is the Balkrishna lie.
+        self.assertAlmostEqual(50.0 + 0.015 * 200.0, 53.0)
+        self.assertNotAlmostEqual(momentum_score(0.015) or 0, 53.0)
+        scored = compute_score(vol_adj=0.4, quality=60)
+        self.assertAlmostEqual(scored, 60.0)
 
     def test_snapshot_reloads_when_mtime_changes(self):
         with tempfile.TemporaryDirectory() as d:

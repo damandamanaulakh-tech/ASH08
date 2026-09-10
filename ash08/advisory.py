@@ -1,8 +1,8 @@
 """ASH08 advisory — Today's Advice. Not a factor-comparison lab.
 
-Ranks the N200 tape by 6m+12m vol-adj (M1), vetoes with T/P/Chitty gates,
-sizes with ½-Kelly, throttles size with FII (not SELECT). Tape close is the
-reference price. Paper fill still needs live LTP.
+Ranks the N200 tape by 6m+12m vol-adj (File 3 / M1), vetoes below 200 DMA,
+SELECT in 62–70, size-down at 70+. Quality is low-vol+ADV20, never coverage-100.
+Tape close is the reference price. Paper fill still needs live LTP.
 """
 from __future__ import annotations
 
@@ -18,13 +18,13 @@ from ash08.config import (
     CHITTY_DECISION_IMPACT,
     CORR_MAX,
     DATA_DIR,
+    HIGH_SCORE_SIZE_MULT,
     KELLY_MAX_PCT,
     MCAP_MIN_CR,
     MOM_MIN,
-    MOM_WEIGHT,
-    QUAL_WEIGHT,
-    SCORE_NEAR_MISS,
+    PARAMETER_SET_ID,
     SCORE_SELECT,
+    SCORE_SELECT_HIGH,
     SCORE_WATCH,
     STOP_PCT,
     TARGET_PCT,
@@ -32,6 +32,7 @@ from ash08.config import (
     TICKER_BLOCKLIST,
     TURNOVER_CR_MIN,
 )
+from ash08.score import compute_score, quality_from_tape
 from ash08.segments import segment_of
 from ash08.sizing import kelly_notional
 
@@ -53,18 +54,6 @@ OCEAN_SIZE_MULT = 0.5
 # Owner lock: ROC20 and the rest stay on the advice path even though the
 # telemetry registry still has CHITTY_DECISION_IMPACT=False.
 CHITTY_GATES_ON = True
-
-
-def mom_return_to_score(m: float) -> float:
-    return max(0.0, min(100.0, 50.0 + m * 200.0))
-
-
-def compute_score(mom6: Optional[float], quality: Optional[float]) -> float:
-    if mom6 is None:
-        return 0.0
-    mom_s = mom_return_to_score(mom6)
-    qual = 50.0 if quality is None else max(0.0, min(100.0, float(quality)))
-    return round(MOM_WEIGHT * mom_s + QUAL_WEIGHT * qual, 2)
 
 
 def fii_size_mult(fii_net: Optional[float]) -> tuple[float, str]:
@@ -125,8 +114,10 @@ def evaluate_name(row: dict, market: dict, fii_mult: float, fii_why: str, book: 
     close = row.get("close")
     rank = row.get("rank")
     mom6 = row.get("mom6")
-    score = compute_score(mom6, row.get("quality"))
-    near = SCORE_NEAR_MISS <= score < 70.0
+    quality = quality_from_tape(row.get("sigma"), row.get("adv20"))
+    score = compute_score(row.get("vol_adj"), row.get("sigma"), row.get("adv20"), quality=quality)
+    near = score is not None and SCORE_SELECT <= score < SCORE_SELECT_HIGH
+    high = score is not None and score >= SCORE_SELECT_HIGH
     in_m6 = rank is not None and rank <= M6_RANK_N
     steps: List[dict] = []
 
@@ -220,10 +211,13 @@ def evaluate_name(row: dict, market: dict, fii_mult: float, fii_why: str, book: 
             steps.append(_st("P-CORR", "UNKNOWN", f"open book · no return series · cap {CORR_MAX}"))
     steps.append(_st("MCAP", "SKIP", f"PROXY_N200 · floor {MCAP_MIN_CR} Cr not measured"))
 
-    kill = blocked or not mom_ok or t1 != "PASS" or t2 != "PASS" or not adv_ok or not to_ok
+    kill = blocked or not mom_ok or t1 != "PASS" or t2 != "PASS" or not adv_ok or not to_ok or score is None
     market_stress = not breadth_ok or not trend_ok
     crash_ok = mom_ok and t1 == "PASS" and t2 == "PASS"
-    ocean_path = market_stress and crash_ok and score >= SCORE_SELECT and in_m6
+    ocean_path = (
+        market_stress and crash_ok and in_m6
+        and score is not None and score >= SCORE_SELECT
+    )
     ocean = False
 
     action = "AVOID"
@@ -231,10 +225,12 @@ def evaluate_name(row: dict, market: dict, fii_mult: float, fii_why: str, book: 
     if kill:
         if blocked:
             reason = "blocklist"
+        elif score is None:
+            reason = "score DATA_NEEDED (need vol_adj and measured quality)"
         elif not mom_ok:
             reason = "6m momentum ≤ 0"
         elif t1 != "PASS":
-            reason = "T1 close not above SMA200"
+            reason = "T1 close not above SMA200 — File 3 no SELECT below 200 DMA"
         elif t2 != "PASS":
             reason = f"T2 ATR {atr}% > {T2_ATR_PCT_MAX}"
         elif not adv_ok:
@@ -256,12 +252,14 @@ def evaluate_name(row: dict, market: dict, fii_mult: float, fii_why: str, book: 
         action = "WATCH"
         reason = f"T9/P10 market stress breadth {market.get('breadth_pct')}% trend {market.get('trend')}"
     elif not in_m6:
-        action = "WATCH" if score >= SCORE_WATCH else "AVOID"
+        action = "WATCH" if score is not None and score >= SCORE_WATCH else "AVOID"
         reason = f"M6 rank {rank} > {M6_RANK_N}"
+    elif high:
+        action = "BUY"
+        reason = f"File 3 70+ size-down {score} · rank {rank}"
     elif score >= SCORE_SELECT:
         action = "BUY"
-        reason = (f"near-miss {score} ≥ {SCORE_NEAR_MISS} · rank {rank}"
-                  if near else f"score {score} ≥ {SCORE_SELECT} · rank {rank}")
+        reason = f"File 3 BUY band {score} in [{SCORE_SELECT:g},{SCORE_SELECT_HIGH:g}) · rank {rank}"
     elif score >= SCORE_WATCH:
         action = "WATCH"
         reason = f"watch {score} in [{SCORE_WATCH},{SCORE_SELECT})"
@@ -269,7 +267,11 @@ def evaluate_name(row: dict, market: dict, fii_mult: float, fii_why: str, book: 
         action = "AVOID"
         reason = f"score {score} < {SCORE_WATCH}"
 
-    size_mult = fii_mult * (OCEAN_SIZE_MULT if ocean else 1.0)
+    size_mult = fii_mult
+    if ocean:
+        size_mult *= OCEAN_SIZE_MULT
+    elif high and action == "BUY":
+        size_mult *= HIGH_SCORE_SIZE_MULT
     exposure = 100.0 * size_mult
     notional, diag = kelly_notional(BOOK_VALUE, score, row.get("sigma"), exposure_pct=exposure)
     qty = 0
@@ -291,6 +293,8 @@ def evaluate_name(row: dict, market: dict, fii_mult: float, fii_why: str, book: 
         "score": score,
         "rank": rank,
         "near_miss": near and action == "BUY",
+        "high_score": high and action == "BUY",
+        "quality": quality,
         "ocean_mixed": ocean,
         "close": close,
         "asof": row.get("asof"),
@@ -337,14 +341,15 @@ def payload(book: Optional[dict] = None) -> dict:
     return {
         "ok": True,
         "asof": snap.get("asof"),
-        "parameter_set_id": "ash08-5cr-kelly-v1",
-        "build": "2026-09-10-desk-honest",
+        "parameter_set_id": PARAMETER_SET_ID,
+        "build": "2026-09-11-file3-62",
         "universe_n": snap.get("universe_n"),
         "buy_n": len(buy),
         "watch_n": len(watch),
         "avoid_n": len(avoid),
         "m6": M6_RANK_N,
         "select": SCORE_SELECT,
+        "select_high": SCORE_SELECT_HIGH,
         "watch": SCORE_WATCH,
         "book": BOOK_VALUE,
         "book_open_n": int(book.get("open_n") or 0),
@@ -357,7 +362,7 @@ def payload(book: Optional[dict] = None) -> dict:
         "chitty_registry_flag": CHITTY_DECISION_IMPACT,
         "chitty_note": "ROC20/vol/breakout still gate Today's Advice (CHITTY_GATES_ON). The 31-name telemetry registry stays decision_impact=False.",
         "m1_live": True,
-        "m1_note": "Advisory ranks on 6m+12m vol-adj. This ships M1 on the advice path.",
+        "m1_note": "File 3: vol-adj 6M+12M score. No SELECT below 200 DMA. BUY 62–70. Size ×0.50 at 70+.",
         "px_note": "Session last is Upstox. After hours Yahoo. Tape close is not a fill.",
         "market": market,
         "fii": {**fii, "size_mult": fii_mult, "size_why": fii_why},

@@ -19,6 +19,7 @@ from ash08.config import (
     MAX_OPEN_POSITIONS,
     SCORE_NEAR_MISS,
     SCORE_SELECT,
+    SCORE_SELECT_HIGH,
     SCORE_WATCH,
     SECTOR_MAX,
     STOP_PCT,
@@ -47,8 +48,9 @@ class FakeResponse:
 class G0ContractTests(unittest.TestCase):
     def test_locked_numbers(self):
         self.assertEqual(BOOK_VALUE, 50_000_000)
-        self.assertEqual(SCORE_SELECT, 68.0)
-        self.assertEqual(SCORE_NEAR_MISS, 68.0)
+        self.assertEqual(SCORE_SELECT, 62.0)
+        self.assertEqual(SCORE_SELECT_HIGH, 70.0)
+        self.assertEqual(SCORE_NEAR_MISS, 62.0)
         self.assertEqual(SCORE_WATCH, 55.0)
         self.assertEqual(CORR_MAX, 0.70)
         self.assertEqual(MAX_OPEN_POSITIONS, 500)
@@ -67,7 +69,8 @@ class G0ContractTests(unittest.TestCase):
         self.assertEqual(cfg["risk"]["cash_reserve_pct"], 5.0)
         self.assertEqual(cfg["chitty"]["adopted"], 31)
         self.assertFalse(cfg["chitty"]["decision_impact"])
-        self.assertEqual(cfg["scanner"]["score_select"], 68.0)
+        self.assertEqual(cfg["scanner"]["score_select"], 62.0)
+        self.assertEqual(cfg["scanner"]["score_select_high"], 70.0)
         self.assertEqual(cfg["scanner"]["corr_max"], 0.70)
         self.assertEqual(cfg["sizing"]["mode"], "half_kelly")
         self.assertEqual(cfg["quotes"]["session"], "upstox_only")
@@ -76,7 +79,7 @@ class G0ContractTests(unittest.TestCase):
         self.assertNotEqual(cfg["scanner"]["score_watch"], 60)
 
     def test_select_at_70(self):
-        row = evaluate_stock(StockMetrics("OK", 800_000, 25, 1, 0.18, 75, 0.4))
+        row = evaluate_stock(StockMetrics("OK", 800_000, 25, 1, 0.18, 75, 0.4, vol_adj=1.28))
         self.assertTrue(row.hard_pass)
         self.assertGreaterEqual(row.score, SCORE_SELECT)
         self.assertEqual(row.decision, "SELECT")
@@ -87,29 +90,31 @@ class G0ContractTests(unittest.TestCase):
         self.assertFalse(row.hard_pass)
 
     def test_watch_band_55_to_70(self):
-        row = evaluate_stock(StockMetrics("WATCH", 800_000, 25, 1, 0.05, 60.0, 0.4))
+        row = evaluate_stock(StockMetrics("WATCH", 800_000, 25, 1, 0.05, 60.0, 0.4, vol_adj=0.4))
         self.assertAlmostEqual(row.score, 60.0, places=2)
         self.assertEqual(row.decision, "WATCH")
 
     def test_corr_070_rejects(self):
-        row = evaluate_stock(StockMetrics("CORR", 800_000, 25, 1, 0.18, 80, 0.71))
+        row = evaluate_stock(StockMetrics("CORR", 800_000, 25, 1, 0.18, 80, 0.71, vol_adj=1.28))
         self.assertFalse(row.hard_pass)
         self.assertEqual(row.decision, "REJECT")
 
     def test_score_formula(self):
-        # mom 0.18 -> 86; quality 75 -> 0.65*86 + 0.35*75 = 82.15
-        self.assertEqual(compute_final_score(0.18, 75), 82.15)
+        # vol_adj 1.44 -> mom 86; quality 75 -> 0.65*86 + 0.35*75 = 82.15
+        self.assertEqual(compute_final_score(1.44, 75), 82.15)
+        # 6M-only 50+200m is not this function: 0.18 as vol_adj is 54.5, not 86
+        self.assertEqual(compute_final_score(0.18, 75), 61.68)
 
     def test_near_miss_at_68_is_full_select(self):
-        row = evaluate_stock(StockMetrics("NEAR", 800_000, 25, 1, 0.0885, 70.0, 0.4))
+        row = evaluate_stock(StockMetrics("NEAR", 800_000, 25, 1, 0.10, 70.0, 0.4, vol_adj=0.6))
         self.assertEqual(row.decision, "SELECT")
-        self.assertGreaterEqual(row.score, 68.0)
+        self.assertGreaterEqual(row.score, 62.0)
         self.assertLess(row.score, 70.0)
         self.assertTrue(row.hard_pass)
         self.assertIn("P-NEAR_MISS", [h.param_id for h in row.hits if h.status == "PASS"])
 
     def test_order_sell_blocks_select(self):
-        row = evaluate_stock(StockMetrics("DUMP", 800_000, 25, 1, 0.18, 75, 0.4, order_signal="sell"))
+        row = evaluate_stock(StockMetrics("DUMP", 800_000, 25, 1, 0.18, 75, 0.4, order_signal="sell", vol_adj=1.28))
         self.assertEqual(row.decision, "REJECT")
         self.assertIn("P-ORDER", [h.param_id for h in row.hits if h.status == "FAIL"])
 

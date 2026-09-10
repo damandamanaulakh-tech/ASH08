@@ -7,8 +7,8 @@ from ash08.config import (
     ADV20_MIN,
     CORR_MAX,
     MOM_MIN,
-    SCORE_NEAR_MISS,
     SCORE_SELECT,
+    SCORE_SELECT_HIGH,
     STALE_MAX_DAYS,
     TURNOVER_CR_MIN,
 )
@@ -34,10 +34,10 @@ DEFINITIONS = {
     "P-TURNOVER": f"5D turnover ≥ ₹{TURNOVER_CR_MIN:g} Cr",
     "P-STALE": f"stale ≤ {int(STALE_MAX_DAYS)} days",
     "P-MOM": f"6M momentum > {MOM_MIN:g}",
-    "P-SCORE": "0.65×mom + 0.35×quality (measured)",
+    "P-SCORE": "0.65×vol-adj 6M+12M + 0.35×(low-vol+ADV20). Never 6M-only 50+200m.",
     "P-CORR": f"max |corr| vs open book ≤ {CORR_MAX}",
-    "P-SELECT": f"hard pass and score ≥ {SCORE_SELECT:g} (auto-buy, includes 68–70)",
-    "P-NEAR_MISS": "ledger: 68 ≤ score < 70 on a SELECT — same buy as ≥70",
+    "P-SELECT": f"above 200 DMA and score ≥ {SCORE_SELECT:g}. BUY band [{SCORE_SELECT:g},{SCORE_SELECT_HIGH:g}). ≥{SCORE_SELECT_HIGH:g} size ×0.50.",
+    "P-NEAR_MISS": f"File 3 BUY band {SCORE_SELECT:g} ≤ score < {SCORE_SELECT_HIGH:g}. ≥{SCORE_SELECT_HIGH:g} is size-down, not a better buy.",
     "P-ORDER": "NSE bulk/block/buyback: net buy PASS, net sell FAIL (blocks), none UNKNOWN (not blocking)",
     "P-GOV": "book-level L0–L4 exposure — not a name gate",
 }

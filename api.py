@@ -18,7 +18,7 @@ LOG = logging.getLogger("ash08.api")
 DESK = ROOT / "desk"
 PORT = int(os.environ.get("PORT", "10000"))
 DATA_DIR = Path("ash08_data")
-BUILD = "2026-09-10-desk-honest"
+BUILD = "2026-09-11-file3-62"
 REF_LTP = {
     "TCS": 3840.0, "HDFCBANK": 1690.0, "RELIANCE": 2950.0, "INFY": 1850.0,
     "ICICIBANK": 1180.0, "SBIN": 820.0, "ITC": 450.0, "MTARTECH": 1850.0,

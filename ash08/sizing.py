@@ -1,8 +1,9 @@
 """½-Kelly sizing. Copied from AM07 maths, no pandas.
 
-edge = IC * sigma * z, z = (score - 67) / 30
+edge = IC * sigma * z, z = (score - 61) / 30
 fraction = 0.5 * mu / sigma^2, capped at 5% of equity.
-Score exactly at SELECT 68 has a thin edge (floor is 67). No vol → 0, not a guess.
+Score exactly at SELECT 62 has a thin edge (floor is 61). No vol → 0, not a guess.
+File 3: 70+ names are sized down in advisory, not given more Kelly.
 IC 0.05 is assumed — same honest caveat as AM07.
 """
 from __future__ import annotations
