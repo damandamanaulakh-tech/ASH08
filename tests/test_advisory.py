@@ -1,8 +1,12 @@
 """Today's Advice — real tape, no comparison cards, no invented mcap."""
+import json
+import os
+import tempfile
 import unittest
+from pathlib import Path
 
-from ash08.advisory import fii_size_mult, payload
-from ash08.config import BOOK_VALUE, MCAP_STATUS, SCORE_SELECT, STOP_PCT, TARGET_PCT
+from ash08.advisory import evaluate_name, fii_size_mult, load_snapshot, payload
+from ash08.config import BOOK_VALUE, CORR_MAX, MCAP_STATUS, SCORE_SELECT, STOP_PCT, TARGET_PCT
 
 
 class AdvisoryTests(unittest.TestCase):
@@ -89,6 +93,88 @@ class AdvisoryTests(unittest.TestCase):
 
     def test_mm_mapped_from_yahoo(self):
         self.assertIn("M&M", self.by)
+
+    def test_chitty_flags_stay_split(self):
+        self.assertTrue(self.body["chitty_gates"])
+        self.assertFalse(self.body["chitty_registry_flag"])
+
+    def test_p11_pcorr_empty_book_is_honest(self):
+        row = _name_row()
+        out = evaluate_name(row, _ok_market(), 1.0, "full", book={"open_n": 0})
+        by = {s["id"]: s for s in out["steps"]}
+        self.assertEqual(by["P11"]["status"], "PASS")
+        self.assertIn("empty book", by["P11"]["detail"])
+        self.assertEqual(by["P-CORR"]["status"], "SKIP")
+        self.assertIn("empty book", by["P-CORR"]["detail"])
+
+    def test_p11_pcorr_open_book_without_series(self):
+        row = _name_row()
+        out = evaluate_name(row, _ok_market(), 1.0, "full", book={"open_n": 3})
+        by = {s["id"]: s for s in out["steps"]}
+        self.assertEqual(by["P11"]["status"], "UNKNOWN")
+        self.assertNotIn("empty book", by["P11"]["detail"])
+        self.assertEqual(by["P-CORR"]["status"], "UNKNOWN")
+        self.assertNotIn("empty book", by["P-CORR"]["detail"])
+        self.assertIn(str(CORR_MAX), by["P-CORR"]["detail"])
+
+    def test_pcorr_open_book_with_series(self):
+        row = _name_row()
+        out = evaluate_name(
+            row, _ok_market(), 1.0, "full",
+            book={"open_n": 2, "corr": {"TCS": 0.4}},
+        )
+        by = {s["id"]: s for s in out["steps"]}
+        self.assertEqual(by["P-CORR"]["status"], "PASS")
+        fail = evaluate_name(
+            row, _ok_market(), 1.0, "full",
+            book={"open_n": 2, "corr": {"TCS": 0.81}},
+        )
+        by_fail = {s["id"]: s for s in fail["steps"]}
+        self.assertEqual(by_fail["P-CORR"]["status"], "FAIL")
+        self.assertEqual(fail["action"], out["action"])
+
+    def test_snapshot_reloads_when_mtime_changes(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "advisory_snapshot.json"
+            p.write_text(json.dumps({"asof": "2026-09-01", "names": []}))
+            a = load_snapshot(p)
+            self.assertEqual(a["asof"], "2026-09-01")
+            p.write_text(json.dumps({"asof": "2026-09-10", "names": []}))
+            os.utime(p, (p.stat().st_mtime + 5, p.stat().st_mtime + 5))
+            b = load_snapshot(p)
+            self.assertEqual(b["asof"], "2026-09-10")
+
+
+def _ok_market():
+    return {"breadth_ok": True, "trend_ok": True, "breadth_pct": 60, "trend": 80}
+
+
+def _name_row():
+    return {
+        "symbol": "TCS",
+        "close": 3800,
+        "rank": 1,
+        "mom6": 0.2,
+        "quality": 80,
+        "vol_adj": 1.0,
+        "sma200": 3000,
+        "above200": True,
+        "atr_pct": 2.0,
+        "adv20": 500000,
+        "turnover_cr": 10,
+        "ema20": 3700,
+        "above_ema20": True,
+        "ema50": 3600,
+        "above_ema50": True,
+        "ema200": 3000,
+        "stack": True,
+        "rsi14": 55,
+        "roc20": 1.0,
+        "vol_ratio": 1.2,
+        "near20h": 0.99,
+        "sigma": 0.2,
+        "asof": "2026-09-09",
+    }
 
 
 if __name__ == "__main__":

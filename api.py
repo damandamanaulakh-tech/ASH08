@@ -18,7 +18,7 @@ LOG = logging.getLogger("ash08.api")
 DESK = ROOT / "desk"
 PORT = int(os.environ.get("PORT", "10000"))
 DATA_DIR = Path("ash08_data")
-BUILD = "2026-09-10-upstox-session"
+BUILD = "2026-09-10-desk-honest"
 REF_LTP = {
     "TCS": 3840.0, "HDFCBANK": 1690.0, "RELIANCE": 2950.0, "INFY": 1850.0,
     "ICICIBANK": 1180.0, "SBIN": 820.0, "ITC": 450.0, "MTARTECH": 1850.0,
@@ -345,7 +345,9 @@ class Handler(BaseHTTPRequestHandler):
             advise_n = {}
             try:
                 from ash08.advisory import payload as advise
-                a = advise()
+                eng = get_engine()
+                book = {"open_n": len(eng.open_symbols())} if eng else None
+                a = advise(book=book)
                 advise_n = {"buy": a.get("buy_n"), "watch": a.get("watch_n"), "asof": a.get("asof")}
             except Exception as e:
                 advise_n = {"error": str(e)}
@@ -499,7 +501,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.json(200, mom())
         if path in ("/api/advise", "/api/advice", "/api/picks"):
             from ash08.advisory import payload as advise
-            return self.json(200, advise())
+            eng = get_engine()
+            book = {"open_n": len(eng.open_symbols())} if eng else None
+            return self.json(200, advise(book=book))
         if path in ("/api/gaps", "/api/infinity"):
             from ash08.infinity_gaps import payload as gaps
             return self.json(200, gaps())
@@ -719,7 +723,8 @@ class Handler(BaseHTTPRequestHandler):
         advise = {}
         try:
             from ash08.advisory import payload as advise_fn
-            advise = advise_fn()
+            book_n = {"open_n": len(eng.open_symbols())} if eng else None
+            advise = advise_fn(book=book_n)
         except Exception as e:
             advise = {"ok": False, "error": str(e)}
         book = {}
@@ -794,7 +799,8 @@ class Handler(BaseHTTPRequestHandler):
         if kind in ("register", "triggers"):
             try:
                 from ash08.advisory import payload as advise_fn
-                advise = advise_fn()
+                book_n = {"open_n": len(eng.open_symbols())} if eng else None
+                advise = advise_fn(book=book_n)
             except Exception as e:
                 advise = {"ok": False, "error": str(e)}
         if kind == "reports":

@@ -26,6 +26,8 @@ Manual: `/api/robot/tick?force=1`. Clock status: `/api/engine`.
 
 AM07 was the pattern (robot picker + journal). ASH08 numbers stay: ₹5 Cr, Kelly, SELECT 68, −3 / +6 / 15d. Not AM07's ₹50L / ₹1.25L / −5 / +20.
 
+ROC20 / vol / breakout still gate Today's Advice (`CHITTY_GATES_ON`). The 31-name telemetry registry stays `decision_impact=False`.
+
 ## Locked runtime (ash08/config.py)
 
 | Item | Value |
@@ -39,7 +41,7 @@ AM07 was the pattern (robot picker + journal). ASH08 numbers stay: ₹5 Cr, Kell
 | Cash reserve | 5% — cash is tracked, 0.10% buy + 0.10% sell |
 | Max open | 500 |
 | Stop / target / hold | −3% / +6% / 15 sessions |
-| Governor L0–L4 | 100 / 70 / 50 / 25 / 15 % |
+| Governor L0–L4 | 100 / 70 / 50 / 25 / 15 % — live each tick from day PnL / drawdown / consec losses. L4 skips new buys; exposure throttles ½-Kelly |
 
 ## Tape
 
@@ -52,6 +54,8 @@ AM07 was the pattern (robot picker + journal). ASH08 numbers stay: ₹5 Cr, Kell
 | FII/DII net through **2026-08-07** | CLOSED for size throttle |
 | Mcap ≥ ₹5,000 Cr | PROXY_N200 — no rupee mcap field |
 | India VIX / 22k | HELD |
+| `advisory_snapshot.json` | Reloads when the file mtime changes (no process restart) |
+| P11 / P-CORR | Empty book: P11 PASS, P-CORR SKIP. Open book with no series: both UNKNOWN. Never claims empty while names are open |
 
 ## Endpoints
 
@@ -70,7 +74,7 @@ AM07 was the pattern (robot picker + journal). ASH08 numbers stay: ₹5 Cr, Kell
 | `/api/reports` `/api/risk` `/api/alerts` | Closed-trade reports, live risk, journal alerts |
 | `/api/register` `/api/triggers` `/api/shadow` | Selection register, Chitty/T gates, opportunity-cost book |
 | `/api/engine` `/api/schedule` `/api/settings` | IST clock, last jobs, locked formula |
-| `/api/health` | `build=2026-09-10-upstox-session` |
+| `/api/health` | `build=2026-09-10-desk-honest` |
 
 ## Run
 

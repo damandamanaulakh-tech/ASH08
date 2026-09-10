@@ -161,6 +161,61 @@ class G0ContractTests(unittest.TestCase):
         l3 = evaluate_governor(damage=True, q10=True, any_fii=True)
         self.assertEqual(l3.exposure_pct, 25.0)
 
+    def test_sync_governor_from_book_state(self):
+        from datetime import datetime, timedelta, timezone
+
+        with tempfile.TemporaryDirectory() as directory:
+            engine = PaperEngine(directory, book_value=50_000_000)
+            engine.sync_governor()
+            self.assertEqual(engine.governor.level, "L0_NORMAL")
+
+            yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime(
+                "%Y-%m-%dT12:00:00Z"
+            )
+            engine.cash = 47_000_000
+            engine.peak_equity = 50_000_000
+            engine.equity_history = [(yesterday, 47_000_000)]
+            engine.sync_governor()
+            self.assertEqual(engine.governor.level, "L1_DAMAGE_ONLY")
+            self.assertEqual(engine.governor.rationale, "dd_-5")
+
+            engine.cash = 39_000_000
+            engine.equity_history = [(yesterday, 39_000_000)]
+            engine.sync_governor()
+            self.assertEqual(engine.governor.level, "L4_EXTREME")
+            self.assertEqual(engine.governor.rationale, "dd_-20")
+
+        with tempfile.TemporaryDirectory() as directory:
+            engine = PaperEngine(directory, book_value=50_000_000)
+            engine.place_order("TCS", "BUY", "MARKET", 1, 1000, source="test", score=80, sigma=0.20)
+            engine.close_position("TCS", 900, reason="STOP_HIT")
+            engine.place_order("INFY", "BUY", "MARKET", 1, 1000, source="test", score=80, sigma=0.20)
+            engine.close_position("INFY", 900, reason="STOP_HIT")
+            engine.sync_governor()
+            self.assertEqual(engine.governor.level, "L2_CONFIRMED")
+            self.assertEqual(engine.governor.rationale, "consec_loss")
+
+        with tempfile.TemporaryDirectory() as directory:
+            engine = PaperEngine(directory, book_value=50_000_000)
+            engine.cash = 48_900_000
+            engine.sync_governor()
+            self.assertEqual(engine.governor.level, "L4_EXTREME")
+            self.assertEqual(engine.governor.rationale, "kill_daily")
+
+    def test_l4_skips_auto_buy_and_exposure_throttles_size(self):
+        with tempfile.TemporaryDirectory() as directory:
+            engine = PaperEngine(directory, book_value=50_000_000)
+            q0 = engine.size_qty(1, 100, score=80, sigma=0.20)
+            engine.governor = evaluate_governor(drawdown_pct=-8.0)
+            q2 = engine.size_qty(1, 100, score=80, sigma=0.20)
+            self.assertGreater(q0, 0)
+            self.assertLess(q2, q0)
+            engine.governor = evaluate_governor(day_pnl_pct=-2.0)
+            rows = [{"symbol": "AAA", "ltp": 100, "score": 80, "vol_sigma": 0.20}]
+            result = engine.auto_buy_selects(rows, price_map={"AAA": 100})
+            self.assertEqual(result["bought"], 0)
+            self.assertTrue(any(x.get("reason") == "kill_or_l4" for x in result["skipped_detail"]))
+
     def test_upstox_quote_url_is_encoded_with_urllib_parse(self):
         observed = {}
 

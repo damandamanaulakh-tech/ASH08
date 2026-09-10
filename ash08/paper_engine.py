@@ -533,6 +533,84 @@ class PaperEngine:
         if changed:
             self._save()
 
+    def _mark_equity(self) -> float:
+        mark_open = 0.0
+        for p in self.positions:
+            if p.get("status") != "OPEN":
+                continue
+            try:
+                mark_open += float(
+                    p.get("mark_value")
+                    or (p.get("ltp") or p.get("entry") or 0) * float(p.get("qty") or 0)
+                )
+            except Exception:
+                pass
+        return round(float(self.cash or 0) + mark_open, 2)
+
+    def _consec_losses(self) -> int:
+        n = 0
+        for p in reversed(self.positions):
+            if p.get("status") == "OPEN":
+                continue
+            try:
+                pnl = float(p.get("realized_pnl") or 0)
+            except Exception:
+                pnl = 0.0
+            if pnl < 0:
+                n += 1
+            else:
+                break
+        return n
+
+    def _day_start_equity(self) -> float:
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        prior = None
+        for ts, eq in self.equity_history or []:
+            if str(ts)[:10] >= today:
+                continue
+            try:
+                val = float(eq)
+            except Exception:
+                continue
+            if val > 0:
+                prior = val
+        if prior is not None:
+            return prior
+        return float(self.book_value)
+
+    def sync_governor(self, equity: Optional[float] = None) -> GovState:
+        """Set L0–L4 from day PnL, drawdown vs peak, and trailing closed losses.
+
+        Auto-buy already skips L4; size_qty already uses exposure_pct.
+        This is the missing write that kept the ladder at init forever.
+        """
+        eq = float(equity) if equity is not None else self._mark_equity()
+        peak = float(self.peak_equity or self.book_value or eq or 1)
+        if eq > peak:
+            peak = eq
+            self.peak_equity = eq
+        dd = round((eq / peak - 1.0) * 100.0, 2) if peak else 0.0
+        start = self._day_start_equity()
+        day_pnl = round((eq / start - 1.0) * 100.0, 2) if start else 0.0
+        consec = self._consec_losses()
+        prev = self.governor.level if self.governor else None
+        self.governor = evaluate_governor(
+            day_pnl_pct=day_pnl,
+            drawdown_pct=dd,
+            consec_losses=consec,
+        )
+        if prev != self.governor.level:
+            self.log_event(
+                "GOVERNOR",
+                level=self.governor.level,
+                exposure_pct=self.governor.exposure_pct,
+                rationale=self.governor.rationale,
+                drawdown_pct=dd,
+                day_pnl_pct=day_pnl,
+                consec_losses=consec,
+            )
+        return self.governor
+
     def mark_to_market(self, price_map=None, use_paper_marks=False):
         price_map = price_map or {}
         self.process_pending(price_map)
@@ -581,15 +659,15 @@ class PaperEngine:
             p.update(fields)
         self.refresh_hold_days(live_symbols=live_syms)
         self.mark_shadow(price_map)
+        eq = None
         try:
-            eq = round(self.cash + sum(
-                float(p.get("mark_value") or 0) for p in self.positions if p.get("status") == "OPEN"
-            ), 2)
+            eq = self._mark_equity()
             self.equity_history = (self.equity_history or [])[-500:] + [(_now(), eq)]
             if eq > float(self.peak_equity or 0):
                 self.peak_equity = eq
         except Exception:
             pass
+        self.sync_governor(equity=eq)
         self._save()
 
     def update_ltp(self, symbol, ltp):

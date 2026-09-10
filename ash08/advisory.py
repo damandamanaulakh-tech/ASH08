@@ -17,6 +17,7 @@ from ash08.config import (
     CASH_RESERVE_PCT,
     CHITTY_DECISION_IMPACT,
     CORR_MAX,
+    DATA_DIR,
     KELLY_MAX_PCT,
     MCAP_MIN_CR,
     MOM_MIN,
@@ -76,18 +77,50 @@ def fii_size_mult(fii_net: Optional[float]) -> tuple[float, str]:
     return 0.50, f"FII {fii_net:.0f} Cr — size ×0.50"
 
 
-@lru_cache(maxsize=1)
-def load_snapshot() -> dict:
-    if not SNAP_PATH.exists():
-        return {"ok": False, "error": "advisory_snapshot.json missing", "names": [], "market": {}, "fii": {}, "data_status": {}}
-    return json.loads(SNAP_PATH.read_text())
+def _snap_mtime(path: Path) -> float:
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return -1.0
+
+
+def load_snapshot(path: Optional[Path] = None) -> dict:
+    p = Path(path) if path is not None else SNAP_PATH
+    return _read_snapshot(str(p.resolve()), _snap_mtime(p))
+
+
+@lru_cache(maxsize=4)
+def _read_snapshot(path_key: str, mtime: float) -> dict:
+    p = Path(path_key)
+    if not p.exists():
+        return {
+            "ok": False,
+            "error": "advisory_snapshot.json missing",
+            "names": [],
+            "market": {},
+            "fii": {},
+            "data_status": {},
+        }
+    return json.loads(p.read_text())
+
+
+def _runtime_open_n() -> int:
+    """OPEN count from the live runtime file only — not packaged/GitHub fallback."""
+    try:
+        p = Path(DATA_DIR) / "paper_state.json"
+        if not p.exists():
+            return 0
+        st = json.loads(p.read_text())
+        return sum(1 for x in (st.get("positions") or []) if x.get("status") == "OPEN")
+    except Exception:
+        return 0
 
 
 def _st(pid: str, status: str, detail: str) -> dict:
     return {"id": pid, "status": status, "detail": detail, "passed": status in ("PASS", "SKIP")}
 
 
-def evaluate_name(row: dict, market: dict, fii_mult: float, fii_why: str) -> dict:
+def evaluate_name(row: dict, market: dict, fii_mult: float, fii_why: str, book: Optional[dict] = None) -> dict:
     sym = str(row.get("symbol") or "").upper()
     close = row.get("close")
     rank = row.get("rank")
@@ -160,7 +193,12 @@ def evaluate_name(row: dict, market: dict, fii_mult: float, fii_why: str) -> dic
     steps.append(_st("P8Q", "PASS" if qok else "FAIL", f"{qhits}/4 of P2·P6·P7·P8"))
 
     steps.append(_st("P10", "PASS" if trend_ok else "FAIL", f"trend={market.get('trend')}"))
-    steps.append(_st("P11", "PASS", "empty book — no damage cluster"))
+    book = book or {}
+    open_n = int(book.get("open_n") or 0)
+    if open_n <= 0:
+        steps.append(_st("P11", "PASS", "empty book — no damage cluster"))
+    else:
+        steps.append(_st("P11", "UNKNOWN", f"open book n={open_n} — damage cluster not measured"))
 
     adv = row.get("adv20")
     adv_ok = adv is not None and adv >= ADV20_MIN
@@ -169,8 +207,17 @@ def evaluate_name(row: dict, market: dict, fii_mult: float, fii_why: str) -> dic
     to_ok = to is not None and to >= TURNOVER_CR_MIN
     steps.append(_st("P-TURNOVER", "UNKNOWN" if to is None else ("PASS" if to_ok else "FAIL"), f"to={to} Cr"))
 
-    # empty book: corr is not a veto
-    steps.append(_st("P-CORR", "SKIP", f"empty book · cap {CORR_MAX}"))
+    corr = (book.get("corr") or {}).get(sym)
+    if open_n <= 0:
+        steps.append(_st("P-CORR", "SKIP", f"empty book · cap {CORR_MAX}"))
+    elif corr is None:
+        steps.append(_st("P-CORR", "UNKNOWN", f"open book · no return series · cap {CORR_MAX}"))
+    else:
+        try:
+            c = float(corr)
+            steps.append(_st("P-CORR", "PASS" if c <= CORR_MAX else "FAIL", f"corr={c} max={CORR_MAX}"))
+        except (TypeError, ValueError):
+            steps.append(_st("P-CORR", "UNKNOWN", f"open book · no return series · cap {CORR_MAX}"))
     steps.append(_st("MCAP", "SKIP", f"PROXY_N200 · floor {MCAP_MIN_CR} Cr not measured"))
 
     kill = blocked or not mom_ok or t1 != "PASS" or t2 != "PASS" or not adv_ok or not to_ok
@@ -273,13 +320,15 @@ def evaluate_name(row: dict, market: dict, fii_mult: float, fii_why: str) -> dic
     }
 
 
-def payload() -> dict:
+def payload(book: Optional[dict] = None) -> dict:
     snap = load_snapshot()
     names = snap.get("names") or []
     market = snap.get("market") or {}
     fii = snap.get("fii") or {}
     fii_mult, fii_why = fii_size_mult(fii.get("fii_net_cr"))
-    rows = [evaluate_name(n, market, fii_mult, fii_why) for n in names]
+    if book is None:
+        book = {"open_n": _runtime_open_n()}
+    rows = [evaluate_name(n, market, fii_mult, fii_why, book=book) for n in names]
     buy = [r for r in rows if r["action"] == "BUY"]
     watch = [r for r in rows if r["action"] == "WATCH"]
     avoid = [r for r in rows if r["action"] == "AVOID"]
@@ -289,7 +338,7 @@ def payload() -> dict:
         "ok": True,
         "asof": snap.get("asof"),
         "parameter_set_id": "ash08-5cr-kelly-v1",
-        "build": "2026-09-09-tape-yahoo",
+        "build": "2026-09-10-desk-honest",
         "universe_n": snap.get("universe_n"),
         "buy_n": len(buy),
         "watch_n": len(watch),
@@ -298,6 +347,7 @@ def payload() -> dict:
         "select": SCORE_SELECT,
         "watch": SCORE_WATCH,
         "book": BOOK_VALUE,
+        "book_open_n": int(book.get("open_n") or 0),
         "cash_reserve_pct": CASH_RESERVE_PCT,
         "stop_pct": STOP_PCT,
         "target_pct": TARGET_PCT,
@@ -305,9 +355,10 @@ def payload() -> dict:
         "kelly_cap_pct": KELLY_MAX_PCT * 100,
         "chitty_gates": CHITTY_GATES_ON,
         "chitty_registry_flag": CHITTY_DECISION_IMPACT,
+        "chitty_note": "ROC20/vol/breakout still gate Today's Advice (CHITTY_GATES_ON). The 31-name telemetry registry stays decision_impact=False.",
         "m1_live": True,
         "m1_note": "Advisory ranks on 6m+12m vol-adj. This ships M1 on the advice path.",
-        "px_note": "Reference is last tape close. Paper fill needs a live last (Upstox, else Yahoo).",
+        "px_note": "Session last is Upstox. After hours Yahoo. Tape close is not a fill.",
         "market": market,
         "fii": {**fii, "size_mult": fii_mult, "size_why": fii_why},
         "data_status": snap.get("data_status") or {},

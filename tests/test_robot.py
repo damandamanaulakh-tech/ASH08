@@ -153,6 +153,27 @@ class RobotTests(unittest.TestCase):
         self.assertFalse(closed["buy_window"])
         self.assertEqual(closed["quote_mode"], "yahoo")
 
+    def test_tick_writes_governor_and_l4_skips_buys(self):
+        with tempfile.TemporaryDirectory() as d:
+            eng = PaperEngine(d, book_value=50_000_000)
+            yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime(
+                "%Y-%m-%dT12:00:00Z"
+            )
+            eng.cash = 39_000_000
+            eng.peak_equity = 50_000_000
+            eng.equity_history = [(yesterday, 39_000_000)]
+            buys = advise()["buy"]
+            prices = {r["symbol"]: float(r["close"]) for r in buys}
+
+            def qfn(syms):
+                return {s: prices[s] for s in syms if s in prices}
+
+            body = tick(eng, quote_fn=qfn, force_buy=True)
+            self.assertEqual(eng.governor.level, "L4_EXTREME")
+            self.assertEqual(body["governor"]["level"], "L4_EXTREME")
+            self.assertEqual(body["bought"], 0)
+            self.assertTrue(any(x.get("reason") == "kill_or_l4" for x in body["skipped_detail"]))
+
 
 if __name__ == "__main__":
     unittest.main()

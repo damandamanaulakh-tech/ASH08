@@ -34,7 +34,8 @@ _LAST: Dict[str, Any] = {
     "buy_symbols": [],
     "sold_detail": [],
     "skipped_detail": [],
-    "note": "Paper robot. NSE session = Upstox last only. After hours = Yahoo last. New buys need the session unless force=1. Exits −3% / +6% / 15d. No fake mark.",
+    "governor": None,
+    "note": "Paper robot. NSE session = Upstox last only. After hours = Yahoo last. New buys need the session unless force=1. Exits −3% / +6% / 15d. Governor L0–L4 from day PnL / drawdown / consec. No fake mark.",
 }
 
 
@@ -87,7 +88,8 @@ def tick(
     quote_fn(symbols) -> {SYM: ltp} or {prices, source}. Missing name = no fill / no exit this tick.
     """
     sess = session_now(now)
-    advise = advise_payload()
+    open_n = len(engine.open_symbols()) if hasattr(engine, "open_symbols") else 0
+    advise = advise_payload(book={"open_n": open_n})
     buys = list(advise.get("buy") or [])
     buy_syms = [str(r.get("symbol") or "").upper() for r in buys if r.get("symbol")]
     opens = [str(p.get("symbol") or "").upper() for p in engine.positions if p.get("status") == "OPEN"]
@@ -109,6 +111,8 @@ def tick(
         engine.mark_to_market(live, use_paper_marks=False)
     else:
         engine.refresh_hold_days(live_symbols=set())
+    if hasattr(engine, "sync_governor"):
+        engine.sync_governor()
 
     sold = [
         {
@@ -179,7 +183,8 @@ def tick(
             for o in (buy_result.get("orders") or [])
         ],
         "quote_mode": sess.get("quote_mode"),
-        "note": "Paper. Session buys need Upstox last. After hours Yahoo marks/exits; new buys need force=1. Auto-sell −3/+6/15d.",
+        "governor": engine.governor.to_dict() if hasattr(engine, "governor") and hasattr(engine.governor, "to_dict") else {},
+        "note": "Paper. Session buys need Upstox last. After hours Yahoo marks/exits; new buys need force=1. Auto-sell −3/+6/15d. Governor from day PnL / drawdown / consec.",
     }
     with _LOCK:
         _LAST.update(body)
