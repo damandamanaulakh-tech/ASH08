@@ -13,10 +13,11 @@ https://github.com/damandamanaulakh-tech/ASH08
    - Name: `ash08-desk`
    - Runtime: Python 3
    - Build: `pip install -r requirements.txt`
-   - Start: `python -m http.server $PORT --directory desk`
+   - Start: `python api.py`
+   - Health: `/api/health`
 5. Create Web Service
 
-You will get a URL like `https://ash08-desk.onrender.com`
+Live URL: `https://ash08-desk.onrender.com`
 
 ## Hard rule
 

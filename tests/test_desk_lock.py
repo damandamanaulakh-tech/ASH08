@@ -33,7 +33,8 @@ class DeskLockTests(unittest.TestCase):
         self.assertEqual(SNAPSHOT["select68"], 154)
         body = mom()
         self.assertIn("M1", body["take_ids"])
-        self.assertIn("unchanged", body["scanner_lock"])
+        self.assertIn("File 3 live", body["scanner_lock"])
+        self.assertIn("62–70", body["scanner_lock"])
 
     def test_gaps_yoy_wired(self):
         body = gaps()

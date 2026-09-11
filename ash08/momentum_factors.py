@@ -113,7 +113,7 @@ def payload() -> dict:
         "panel": MOM_PANEL,
         "universe_n": MOM_UNIVERSE_N,
         "snapshot_n": MOM_SNAPSHOT_N,
-        "scanner_lock": "unchanged — 6m raw + SELECT ≥68 + Chitty ROC20. M1 is TAKE, not shipped.",
+        "scanner_lock": "File 3 live — vol-adj 6M+12M, SELECT 62–70 above 200 DMA, 70+ size ×0.50. M1/M2/M4 shipped. 2024-07-05 lab panel unchanged.",
         "snapshot": SNAPSHOT,
         "books": BOOKS,
         "top_nse": TOP_NSE,

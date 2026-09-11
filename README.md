@@ -39,7 +39,7 @@ ROC20 / vol / breakout still gate Today's Advice (`CHITTY_GATES_ON`). The 31-nam
 | WATCH | **55** ≤ score < 62 |
 | Score | `0.65 × clip(50+25×vol_adj) + 0.35 × (low-vol + ADV20 liquidity)` — never quality=100 coverage |
 | Rank | M1 6m+12m vol-adj, M6 N = **25** |
-| Size | ½-Kelly (IC 0.05 assumed, cap 5% of book, floor 67) |
+| Size | ½-Kelly (IC 0.05 assumed, cap 5% of book, floor 61) |
 | FII | size throttle only, not SELECT |
 | Cash reserve | 5% — cash is tracked, 0.10% buy + 0.10% sell |
 | Max open | 500 |
